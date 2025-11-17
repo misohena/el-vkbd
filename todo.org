@@ -3,44 +3,44 @@
 #+AUTHOR: AKIYAMA Kouhei
 
 * Inbox
-** TODO �L�[�����������ɃL�[�̐F��ύX����
-** TODO �C���L�[���b�N���ɃL�[�̐F��ύX����
-** TODO �V�t�g�L�[�̏�Ԃő啶���������̕\����؂�ւ���
-** TODO �t���[���̈ʒu���L������
-** TODO �������ŃL�[���s�[�g����
-** TODO �t���[���̓��̓t�H�[�J�X�𐧌䂷��
-- �ł��邾���L�[�Ƀt�H�[�J�X���āA�t�H�[�J�X���O�ꂽ����郂�[�h
-- �ł��邾���e�t���[���Ƀt�H�[�J�X���郂�[�h
-** TODO SVG�L�[�{�[�h�X�^�C����ǉ�����
-** TODO Emacs�̃I���X�N���[���L�[�{�[�h�Ƃ��Ďg����悤�ɂ���
-** TODO vkbd-tool-bar-mode�����?
-** TODO Caps Lock��ǉ�����
-** TODO �C�ӂ̃o�b�t�@���ɒ��ڃL�[�{�[�h�𐶐��ł���悤�ɂ���
-�o�b�t�@���[�J���L�[�{�[�h����肽���BSVG�摜����Ȃ��Ǝ��p�I����Ȃ��Ǝv���B��������Ȃ�L�[�{�[�h�̏�Ԃ̓o�b�t�@�Ɏ������Ȃ������ǂ��B��̃o�b�t�@�ɕ����̃L�[�{�[�h��z�u����\��������̂ŁB
-** TODO �|�C���g(�J�[�\��)�̈ʒu�������I�ɔ����Ă���郂�[�h
-** TODO �����I�ɏ������Ȃ�����傫���Ȃ��Ă��ꂽ�肷�郂�[�h
-** TODO �t���[���T�C�Y���h���b�O�ŕς�����悤�ɂ���
-** TODO (�q�t���[���ł͂Ȃ�)�Ɨ��t���[���Ŏg����悤�ɂ���
-** TODO �t���[��������Ƃ��Ƀo�b�t�@��������悤�ɂ���
-** TODO �T�C�Y��options�ŕύX�ł���悤�ɂ�����
-����vkbd-text-keyboard��ύX���Ȃ���΂Ȃ�Ȃ��B
+** TODO キー押し下げ中にキーの色を変更する
+** TODO 修飾キーロック時にキーの色を変更する
+** TODO シフトキーの状態で大文字小文字の表示を切り替える
+** TODO フレームの位置を記憶する
+** TODO 長押しでキーリピートする
+** TODO フレームの入力フォーカスを制御する
+- できるだけキーにフォーカスして、フォーカスが外れたら閉じるモード
+- できるだけ親フレームにフォーカスするモード
+** TODO SVGキーボードスタイルを追加する
+** TODO Emacsのオンスクリーンキーボードとして使えるようにする
+** TODO vkbd-tool-bar-modeを作る?
+** TODO Caps Lockを追加する
+** TODO 任意のバッファ内に直接キーボードを生成できるようにする
+バッファローカルキーボードを作りたい。SVG画像じゃないと実用的じゃないと思う。これをやるならキーボードの状態はバッファに持たせない方が良い。一つのバッファに複数のキーボードを配置する可能性があるので。
+** TODO ポイント(カーソル)の位置を自動的に避けてくれるモード
+** TODO 自動的に小さくなったり大きくなってくれたりするモード
+** TODO フレームサイズをドラッグで変えられるようにする
+** TODO (子フレームではなく)独立フレームで使えるようにする
+** TODO フレームを閉じたときにバッファも消えるようにする
+** TODO サイズをoptionsで変更できるようにしたい
+今はvkbd-text-keyboardを変更しなければならない。
 
 * Finished
-** DONE �q�t���[���ɃL�[�{�[�h��\������
+** DONE 子フレームにキーボードを表示する
 CLOSED: [2025-11-15 Sat 00:31]
-** DONE �L�[�}�b�v�ϊ��̎d�g�݂𗝉�����
+** DONE キーマップ変換の仕組みを理解する
 CLOSED: [2025-11-16 Sun 12:38]
-*** �}�j���A��������\�[�X�R�[�h�̗�
-[[https://www.gnu.org/software/emacs/manual/html_node/elisp/Translation-Keymaps.html][Translation Keymaps (GNU Emacs Lisp Reference Manual)]]�ɐ���������B�����ɂ�local-function-key-map���g�p����C-c h�Ō㑱�̃C�x���g��H-��t������Ⴊ����B
+*** マニュアルや既存ソースコードの例
+[[https://www.gnu.org/software/emacs/manual/html_node/elisp/Translation-Keymaps.html][Translation Keymaps (GNU Emacs Lisp Reference Manual)]]に説明がある。そこにはlocal-function-key-mapを使用してC-c hで後続のイベントにH-を付加する例がある。
 
-[[elisp-function:modifier-bar-mode]]��[[elisp-variable:input-decode-map]]���g�p���Ă���B[[elisp-function:tool-bar-event-apply-control-modifier]]�֐�����ʂ���[[elisp-function:modifier-bar-button]]�֐����Ă΂��B
+[[elisp-function:modifier-bar-mode]]は[[elisp-variable:input-decode-map]]を使用している。[[elisp-function:tool-bar-event-apply-control-modifier]]関数等を通じて[[elisp-function:modifier-bar-button]]関数が呼ばれる。
 
-[[elisp-library:touch-screen][touch-screen.el]]��function-key-map���g�p���Ă���B[[elisp-function:touch-screen-translate-touch]]�֐����Ă΂��B
+[[elisp-library:touch-screen][touch-screen.el]]はfunction-key-mapを使用している。[[elisp-function:touch-screen-translate-touch]]関数が呼ばれる。
 
-�Ƃ�킯[[elisp-function:touch-screen-translate-touch]]�֐��͑傢�ɎQ�l�ɂȂ�B�Ă΂ꂽ���_�ł̃C�x���g��[[elisp-variable:current-key-remap-sequence]]�ϐ�����擾���Ă���B
+とりわけ[[elisp-function:touch-screen-translate-touch]]関数は大いに参考になる。呼ばれた時点でのイベントを[[elisp-variable:current-key-remap-sequence]]変数から取得している。
 
-*** �P���ȕϊ��֐�������ċ�����T��
-�ЂƂ܂������ϊ����Ȃ��ϊ��֐�������ă��O���o�͂����Ă݂�B
+*** 単純な変換関数を作って挙動を探る
+ひとまず何も変換しない変換関数を作ってログを出力させてみる。
 
 #+begin_src elisp
 (defun my-test-translate-event (prompt)
@@ -56,40 +56,40 @@ CLOSED: [2025-11-16 Sun 12:38]
 ;; (define-key input-decode-map [down-mouse-1] nil t)
 #+end_src
 
-��̃R�[�h��]��������A���̃o�b�t�@�����}�E�X�ŉ����Ă݂�Ǝ��̂悤�ȃ��b�Z�[�W������ꂽ�B
+上のコードを評価した後、このバッファ内をマウスで押してみると次のようなメッセージが得られた。
 
 : Translate curr=[(down-mouse-1 (#<window 947 on todo.org<el-vkbd>> 1186 (508 . 256) 87241859 nil 1186 (63 . 12) nil (508 . 16) (8 . 20)))] prompt=nil
 
-����Ɠ����Ƀ|�C���g(�e�L�X�g�J�[�\��)�͉������ʒu�Ɉړ�����B
+それと同時にポイント(テキストカーソル)は押した位置に移動する。
 
-my-test-translate-event�̖߂�l��ς��Ă݂�B������nil��Ԃ��悤�ɕύX���Ă�����͕ς��Ȃ��B������ ~[]~ ��Ԃ��悤�ɂ����牟�������_�ł͈ړ����Ȃ�����(�������Ƃ��Ɉړ�����)�B
+my-test-translate-eventの戻り値を変えてみる。試しにnilを返すように変更してもそれは変わらない。しかし ~[]~ を返すようにしたら押した時点では移動しなかった(離したときに移動する)。
 
-| �߂�l                     | ����                      |
+| 戻り値                     | 挙動                      |
 |----------------------------+---------------------------|
-| current-key-remap-sequence | �����������ړ�            |
-| nil                        | �����������ړ�            |
-| []                         | �����������ړ����Ȃ�      |
-| [?a]                       | a���}��                   |
-| [?a ?b]                    | b���}��(�����͕Ԃ��Ȃ��I) |
+| current-key-remap-sequence | 押し下げ時移動            |
+| nil                        | 押し下げ時移動            |
+| []                         | 押し下げ時移動しない      |
+| [?a]                       | aが挿入                   |
+| [?a ?b]                    | bが挿入(複数は返せない！) |
 
-���͊֐��͂ǂ̂悤�Ȍ��ʂ�Ԃ����낤���Bmy-test-translate-event�� ~[?a]~ ��Ԃ��悤�ɂ�����Ŏ����Ă݂�B
+入力関数はどのような結果を返すだろうか。my-test-translate-eventが ~[?a]~ を返すようにした上で試してみる。
 
 #+begin_src elisp
 (read-event "Prompt: ") ;; => (down-mouse-1 (#<window 947 on todo.org<el-vkbd>> 2044 (249 . 473) 88984375 nil 2044 (31 . 23) nil (57 . 13) (8 . 20)))
 (read-char "Prompt: ") ;; ERROR: (error "Non-character input-event")
 (read-char-choice "Prompt: " '(?a ?b)) ;; => 97
-(read-key "Prompt: ") ;; �����������ɕԂ��Ă����A�������mouse-1
+(read-key "Prompt: ") ;; 押し下げ時に返ってこず、解放時にmouse-1
 (read-key-sequence "Prompt: ") ;; => "a"
 #+end_src
 
-�^��_�E�A�C�f�A:
-- �����̓��͂�Ԃ��Ȃ��Ȃ�A�C�x���g��V���ɒǉ����Ă��܂��Ă͂ǂ����B
-- read-event�ɂ������������Ȃ�input-method-function���g���Ă͂ǂ����B
-- �o�b�t�@���[�J����local-function-key-map�ŏ\����������Ȃ��B
-- �t���[���ׂ�(�ϊ��O�ƌ�̃t���[�����قȂ�)�����ǂ����邩�B
+疑問点・アイデア:
+- 複数の入力を返せないなら、イベントを新たに追加してしまってはどうか。
+- read-eventにも効かせたいならinput-method-functionを使ってはどうか。
+- バッファローカルなlocal-function-key-mapで十分かもしれない。
+- フレーム跨ぎ(変換前と後のフレームが異なる)問題をどうするか。
 
-*** �C�x���g�ǉ��Z
-�킴�킴�ϊ�����̂ł͂Ȃ��A����[[elisp-variable:unread-command-events]]�ɒǉ����Ă��܂��Ηǂ��B
+*** イベント追加技
+わざわざ変換するのではなく、直接[[elisp-variable:unread-command-events]]に追加してしまえば良い。
 
 #+begin_src elisp
 (defun my-test-translate-event (prompt)
@@ -98,19 +98,19 @@ my-test-translate-event�̖߂�l��ς��Ă݂�B������nil��Ԃ��悤�ɕύX���Ă�����
   [])
 #+end_src
 
-��������Ǝ��ۂɉ����������_��a��b�������o�b�t�@�ɑ}�������B
+こうすると実際に押し下げ時点でaとbが両方バッファに挿入される。
 
 *** input-method-function
-[[elisp-function:read-event]]�̐�����ǂނ�input-method�ɂ��ď�����Ă���B
+[[elisp-function:read-event]]の説明を読むとinput-methodについて書かれている。
 
-[[https://www.gnu.org/software/emacs/manual/html_node/elisp/Reading-Input.html][Reading Input (GNU Emacs Lisp Reference Manual)]]�������read-event���l��Ԃ��O��[[elisp-variable:input-method-function]]���������s�����Ƃ�������B
+[[https://www.gnu.org/software/emacs/manual/html_node/elisp/Reading-Input.html][Reading Input (GNU Emacs Lisp Reference Manual)]]を見るとread-eventが値を返す前に[[elisp-variable:input-method-function]]が処理を行うことが分かる。
 
 [[https://www.gnu.org/software/emacs/manual/html_node/elisp/Invoking-the-Input-Method.html][Invoking the Input Method (GNU Emacs Lisp Reference Manual)]]
 
 #+begin_quote
-22.8.4 ���̓��\�b�h�̌Ăяo��
+22.8.4 入力メソッドの呼び出し
 
-�C�x���g�ǂݎ��֐��́A���݂̓��̓��\�b�h������ꍇ�͂�����Ăяo���܂� (�u���̓��\�b�h�v���Q��)�Binput-method-function �̒l�� nil �ȊO�̏ꍇ�A�֐��ł���K�v������܂��Bread-event �́A�C���r�b�g�̂Ȃ�������� (SPC ���܂�) ��ǂݎ��ƁA���̊֐����Ăяo���āA���̕����������Ƃ��ēn���܂��B
+イベント読み取り関数は、現在の入力メソッドがある場合はそれを呼び出します (「入力メソッド」を参照)。input-method-function の値が nil 以外の場合、関数である必要があります。read-event は、修飾ビットのない印刷文字 (SPC を含む) を読み取ると、その関数を呼び出して、その文字を引数として渡します。
 #+end_quote
 
 #+begin_src elisp
@@ -121,15 +121,15 @@ my-test-translate-event�̖߂�l��ς��Ă݂�B������nil��Ԃ��悤�ɕύX���Ă�����
 ;; (setq-local input-method-function 'list)
 #+end_src
 
-�c�O�Ȃ���}�E�X�C�x���g�������͌Ă΂�Ȃ��B *�C���r�b�g�̂Ȃ�������� (SPC ���܂�) ��ǂݎ���* �Ə�����Ă���ʂ�B�c�O�B
+残念ながらマウスイベント発生時は呼ばれない。 *修飾ビットのない印刷文字 (SPC を含む) を読み取ると* と書かれている通り。残念。
 
-*** local-function-key-map���g��?
-local-function-key-map�̓}�C�i�[���[�h�A���[�J���}�b�v�A�O���[�o���}�b�v���Ŏg���Ȃ������C�x���g�ɑ΂��Č������ŁA�o�b�t�@���[�J���Ƃ����Ӗ��ł͂Ȃ��B�Ȃ̂Ŏg���Ӗ��������B
+*** local-function-key-mapを使う?
+local-function-key-mapはマイナーモード、ローカルマップ、グローバルマップ等で使われなかったイベントに対して効く物で、バッファローカルという意味ではない。なので使う意味が無い。
 
-*** �t���[���ׂ����
-�q�t���[���ŉ��z�L�[�{�[�h��\������ꍇ�A�}�E�X�C�x���g����������t���[���Ɠ��͔��f������t���[�����قȂ�Ƃ�����肪����B
+*** フレーム跨ぎ問題
+子フレームで仮想キーボードを表示する場合、マウスイベントが発生するフレームと入力反映させるフレームが異なるという問題がある。
 
-���̃R�[�h�̓}�E�X�C�x���g�����ʒu�ɂ���e�L�X�g�v���p�e�B my-test-input �̒l��unread-command-events�ɒǉ�����B
+次のコードはマウスイベント発生位置にあるテキストプロパティ my-test-input の値をunread-command-eventsに追加する。
 
 #+begin_src elisp
 (defun my-test-translate-event (prompt)
@@ -153,7 +153,7 @@ local-function-key-map�̓}�C�i�[���[�h�A���[�J���}�b�v�A�O���[�o���}�b�v���Ŏg��
 ;; (define-key input-decode-map [down-mouse-1] nil t)
 #+end_src
 
-�܂肻�̂悤�ȃe�L�X�g�v���p�e�B�t���̃e�L�X�g���o�b�t�@�ɑ}������ƁA���͂��s���{�^���Ƃ��ċ@�\����B
+つまりそのようなテキストプロパティ付きのテキストをバッファに挿入すると、入力を行うボタンとして機能する。
 
 #+begin_src elisp
 (defun my-test-create-input-button ()
@@ -161,22 +161,22 @@ local-function-key-map�̓}�C�i�[���[�h�A���[�J���}�b�v�A�O���[�o���}�b�v���Ŏg��
 ;; (my-test-create-input-button) [Input a b]
 #+end_src
 
-my-test-create-input-button��]�������ab����͂���{�^�����o�b�t�@�ɑ}�������B
+my-test-create-input-buttonを評価するとabを入力するボタンがバッファに挿入される。
 
-���݂̃o�b�t�@�ɂ���{�^�����������ꍇ�̓o�b�t�@�̑J�ڂ������̂Ŗ��Ȃ�ab�����͂����B
+現在のバッファにあるボタンを押した場合はバッファの遷移が無いので問題なくabが入力される。
 
-���������݂̃o�b�t�@�ȊO�ɂ���{�^�����������ꍇ�͂ǂ��Ȃ邾�낤���B
+しかし現在のバッファ以外にあるボタンを押した場合はどうなるだろうか。
 
-�ʂ̃E�B���h�E�ɂ���{�^�����������ꍇ�A�܂��E�B���h�E���J�ڂ���O�Ȃ̂Ō��̃E�B���h�E�̃o�b�t�@��ab�����͂����B
+別のウィンドウにあるボタンを押した場合、まだウィンドウが遷移する前なので元のウィンドウのバッファにabが入力される。
 
-�ʂ̃t���[���ɂ���{�^�����������ꍇ�A�t���[�����J�ڂ��Ă���}�E�X�C�x���g���������邽�ߕʂ̃t���[���Ō��ݑI�𒆂̃E�B���h�E�ɂ���o�b�t�@(�{�^��������o�b�t�@�ł͂Ȃ�)��ab�����͂����B
+別のフレームにあるボタンを押した場合、フレームが遷移してからマウスイベントが発生するため別のフレームで現在選択中のウィンドウにあるバッファ(ボタンがあるバッファではない)にabが入力される。
 
-�ʃt���[�����}�E�X�������Ă��t���[���̑J�ڂ��������Ȃ��悤�ɂ�����@�͂����炭�Ȃ��B
+別フレームをマウスを押してもフレームの遷移が発生しないようにする方法はおそらくない。
 
-��Ԏ����葁���̂�select-frame(��������select-frame-set-input-focus)�Ŗ߂��Ă��܂����ƁB
+一番手っ取り早いのはselect-frame(もしくはselect-frame-set-input-focus)で戻してしまうこと。
 
 #+begin_src elisp
-(defvar my-test-main-frame (selected-frame)) ;; ���̖߂���
+(defvar my-test-main-frame (selected-frame)) ;; 仮の戻し先
 
 (defun my-test-translate-event (prompt)
   (message "Translate curr=%s prompt=%s" current-key-remap-sequence prompt)
@@ -198,55 +198,55 @@ my-test-create-input-button��]�������ab����͂���{�^�����o�b�t�@�ɑ}�������
                   [])))))))))
 #+end_src
 
-�q�t���[���ł���ΐe�t���[���ɖ߂��Ă��܂��Ηǂ��B
+子フレームであれば親フレームに戻してしまえば良い。
 
-*** ���_
+*** 結論
 
-- �t�B���^�֐��͎����̏������ׂ��C�x���g�������Ƃ��ɁAunread-command-events�ɃL�[��ǉ�����[]��Ԃ��ׂ��B�����łȂ����nil��Ԃ��Ηǂ��B
-- �q�t���[����I�����������Ȃ����select-frame��select-frame-set-input-focus���g���Ė�����e�t���[����I�����Ă��܂��Ηǂ��B
+- フィルタ関数は自分の処理すべきイベントが来たときに、unread-command-eventsにキーを追加して[]を返すべし。そうでなければnilを返せば良い。
+- 子フレームを選択させたくなければselect-frameやselect-frame-set-input-focusを使って無理矢理親フレームを選択してしまえば良い。
 
-** DONE Emacs��(�}�E�X�E�^�b�`)�C�x���g����L�[����͂���d�g�݂����
+** DONE Emacsの(マウス・タッチ)イベントからキーを入力する仕組みを作る
 CLOSED: [2025-11-16 Sun 12:43]
 
-** DONE �q�t���[�����h���b�O�ňړ��ł���悤�ɂ���
+** DONE 子フレームをドラッグで移動できるようにする
 CLOSED: [2025-11-16 Sun 17:53]
-** DONE �q�t���[�������{�^����ǉ�����
+** DONE 子フレームを閉じるボタンを追加する
 CLOSED: [2025-11-16 Sun 17:53]
-** DONE Android�ł̃h���b�O�ړ����J�N���̂𒼂�
+** DONE Androidでのドラッグ移動がカクつくのを直す
 CLOSED: [2025-11-16 Sun 23:51]
 
-�^�b�`�C�x���g���Ƀ^�b�`�Ńt���[�����ړ�����ƁA�t���[�����U�����Ĕ��U���E�B���h�E�͈͊O�ɔ�яo���Č����Ȃ��Ȃ��Ă��܂����Ƃ�����B
-�t���[���ړ�����ɂ������ȍ��W������touchscreen-update�C�x���g���������邱�Ƃ������B
-touchscreen-update�C�x���g�͎w�𓮂����Ȃ��Ă��t���[�����ړ����������Ŕ�������B
-�����炭�t���[���ʒu��ύX��������ɕύX�O�̃^�b�`���W�����ɃC�x���g�������Ă��Ă���̂ł͂Ȃ����B
-������ɂ���Emacs Lisp����ł͂��ꂪ���������W�Ȃ̂��s���ȍ��W�Ȃ̂����f�ł��Ȃ��B
-�t���[���ړ�����̃C�x���g�͐M�p�ł��Ȃ��̂ŁA�ړ������������L�^���Ă����āA��莞��(vkbd-frame-move-debounce-time�ϐ�)�o������łȂ���Ώ������Ȃ��悤�ɂ����B
+タッチイベント時にタッチでフレームを移動すると、フレームが振動して発散しウィンドウ範囲外に飛び出して見えなくなってしまうことがある。
+フレーム移動直後におかしな座標を持つtouchscreen-updateイベントが発生することが原因。
+touchscreen-updateイベントは指を動かさなくてもフレームを移動しただけで発生する。
+おそらくフレーム位置を変更した直後に変更前のタッチ座標を元にイベントが送られてきているのではないか。
+いずれにせよEmacs Lispからではそれが正しい座標なのか不正な座標なのか判断できない。
+フレーム移動直後のイベントは信用できないので、移動した時刻を記録しておいて、一定時間(vkbd-frame-move-debounce-time変数)経った後でなければ処理しないようにした。
 
-** DONE �V�t�g�L�[�œ��͂��镶����\���ł���悤�ɂ���
+** DONE シフトキーで入力する文字を表示できるようにする
 CLOSED: [2025-11-16 Sun 23:50]
-** DONE ���C�A�E�g�ƃX�^�C���𕪗�����
+** DONE レイアウトとスタイルを分離する
 CLOSED: [2025-11-16 Sun 23:49]
-** DONE �L�[�𔼕����点��悤�ɂ���
+** DONE キーを半分ずらせるようにする
 CLOSED: [2025-11-16 Sun 23:50]
 
-** DONE JP�L�[�{�[�h���C�A�E�g��ǉ�����
+** DONE JPキーボードレイアウトを追加する
 CLOSED: [2025-11-16 Sun 23:49]
-** DONE US�L�[�{�[�h���C�A�E�g��ǉ�����
+** DONE USキーボードレイアウトを追加する
 CLOSED: [2025-11-16 Sun 23:49]
-** DONE �V�t�g�L�[���p�ŋL������͂ł���悤�ɂ���
+** DONE シフトキー併用で記号を入力できるようにする
 CLOSED: [2025-11-17 Mon 11:35]
-�L�[��\���̂�key-type�ł͂Ȃ�key-data�Ƃ����\�����g���悤�ɂ���B
-key-data�͈�̃L�[��\���Akey-type�͎��ۂɓ��͂������̂�\���B
-** DONE ���R���p�N�g�ȃ��C�A�E�g��ǉ�����
+キーを表すのにkey-typeではなくkey-dataという構造を使うようにする。
+key-dataは一つのキーを表し、key-typeは実際に入力されるものを表す。
+** DONE よりコンパクトなレイアウトを追加する
 CLOSED: [2025-11-17 Mon 11:37]
-- vkbd-layout-10x7 : �L����1�������͂ɂ������Ȃ����C�A�E�g
-- vkbd-layout-10x6 : �قƂ�ǂ̋L����Shift���K�v�AIns��Del���폜
-** DONE �O���[�o���L�[�{�[�h��open�Eclose�R�}���h�����
+- vkbd-layout-10x7 : 記号の1文字入力にこだわらないレイアウト
+- vkbd-layout-10x6 : ほとんどの記号にShiftが必要、InsとDelを削除
+** DONE グローバルキーボードのopen・closeコマンドを作る
 CLOSED: [2025-11-17 Mon 12:25]
-M-x vkbd-open-global-keyboard�ŃL�[�{�[�h���J���AM-x vkbd-close-global-keyboard�ŕ���Ƃ��������̂��̂�����Ε֗��B
-** DONE �c�[���o�[�ɃO���[�o���L�[�{�[�h�g�O���{�^����ǉ�����
+M-x vkbd-open-global-keyboardでキーボードを開き、M-x vkbd-close-global-keyboardで閉じるというだけのものがあれば便利。
+** DONE ツールバーにグローバルキーボードトグルボタンを追加する
 CLOSED: [2025-11-17 Mon 16:32]
-** DONE row-separator������������������
+** DONE row-separatorをもう少し狭くする
 CLOSED: [2025-11-17 Mon 23:37]
-�����Ȃ�Ȃ�������line-spacing�������Bframe-parameter��line-spacing�p�����[�^�͖��������݂����B���̓f�t�H���g�l(�O���[�o���l)��4�ɂ��Ă��邩��A���ꂪ�g���čs�Ԃ��傫���Ȃ��Ă����B
-vkbd-keyboard-buffer-line-spacing�ϐ���ǉ��B
+狭くならない原因はline-spacingだった。frame-parameterのline-spacingパラメータは無視されるみたい。私はデフォルト値(グローバル値)を4にしているから、それが使われて行間が大きくなっていた。
+vkbd-keyboard-buffer-line-spacing変数を追加。
