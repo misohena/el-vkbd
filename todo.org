@@ -1,0 +1,249 @@
+#+TITLE: Emacs Virtual Keyboard TODO List
+#+DATE: [2025-11-14 Fri]
+#+AUTHOR: AKIYAMA Kouhei
+
+* Inbox
+** TODO キー押し下げ中にキーの色を変更する
+** TODO 修飾キーロック時にキーの色を変更する
+** TODO シフトキーの状態で大文字小文字の表示を切り替える
+** TODO フレームの位置を記憶する
+** TODO row-separatorをもう少し狭くする
+** TODO 長押しでキーリピートする
+** TODO フレームの入力フォーカスを制御する
+- できるだけキーにフォーカスして、フォーカスが外れたら閉じるモード
+- できるだけ親フレームにフォーカスするモード
+** TODO SVGキーボードスタイルを追加する
+** TODO Emacsのオンスクリーンキーボードとして使えるようにする
+** TODO vkbd-tool-bar-modeを作る?
+** TODO Caps Lockを追加する
+** TODO 任意のバッファ内に直接キーボードを生成できるようにする
+バッファローカルキーボードを作りたい。SVG画像じゃないと実用的じゃないと思う。これをやるならキーボードの状態はバッファに持たせない方が良い。一つのバッファに複数のキーボードを配置する可能性があるので。
+** TODO ポイント(カーソル)の位置を自動的に避けてくれるモード
+** TODO 自動的に小さくなったり大きくなってくれたりするモード
+** TODO フレームサイズをドラッグで変えられるようにする
+** TODO (子フレームではなく)独立フレームで使えるようにする
+** TODO フレームを閉じたときにバッファも消えるようにする
+** TODO サイズをoptionsで変更できるようにしたい
+今はvkbd-text-keyboardを変更しなければならない。
+
+* Finished
+** DONE 子フレームにキーボードを表示する
+CLOSED: [2025-11-15 Sat 00:31]
+** DONE キーマップ変換の仕組みを理解する
+CLOSED: [2025-11-16 Sun 12:38]
+*** マニュアルや既存ソースコードの例
+[[https://www.gnu.org/software/emacs/manual/html_node/elisp/Translation-Keymaps.html][Translation Keymaps (GNU Emacs Lisp Reference Manual)]]に説明がある。そこにはlocal-function-key-mapを使用してC-c hで後続のイベントにH-を付加する例がある。
+
+[[elisp-function:modifier-bar-mode]]は[[elisp-variable:input-decode-map]]を使用している。[[elisp-function:tool-bar-event-apply-control-modifier]]関数等を通じて[[elisp-function:modifier-bar-button]]関数が呼ばれる。
+
+[[elisp-library:touch-screen][touch-screen.el]]はfunction-key-mapを使用している。[[elisp-function:touch-screen-translate-touch]]関数が呼ばれる。
+
+とりわけ[[elisp-function:touch-screen-translate-touch]]関数は大いに参考になる。呼ばれた時点でのイベントを[[elisp-variable:current-key-remap-sequence]]変数から取得している。
+
+*** 単純な変換関数を作って挙動を探る
+ひとまず何も変換しない変換関数を作ってログを出力させてみる。
+
+#+begin_src elisp
+(defun my-test-translate-event (prompt)
+  (message "Translate curr=%s prompt=%s" current-key-remap-sequence prompt)
+  current-key-remap-sequence
+  ;; nil
+  ;; []
+  ;; [?a]
+  ;; [?a ?b]
+  )
+
+(define-key input-decode-map [down-mouse-1] #'my-test-translate-event)
+;; (define-key input-decode-map [down-mouse-1] nil t)
+#+end_src
+
+上のコードを評価した後、このバッファ内をマウスで押してみると次のようなメッセージが得られた。
+
+: Translate curr=[(down-mouse-1 (#<window 947 on todo.org<el-vkbd>> 1186 (508 . 256) 87241859 nil 1186 (63 . 12) nil (508 . 16) (8 . 20)))] prompt=nil
+
+それと同時にポイント(テキストカーソル)は押した位置に移動する。
+
+my-test-translate-eventの戻り値を変えてみる。試しにnilを返すように変更してもそれは変わらない。しかし ~[]~ を返すようにしたら押した時点では移動しなかった(離したときに移動する)。
+
+| 戻り値                     | 挙動                      |
+|----------------------------+---------------------------|
+| current-key-remap-sequence | 押し下げ時移動            |
+| nil                        | 押し下げ時移動            |
+| []                         | 押し下げ時移動しない      |
+| [?a]                       | aが挿入                   |
+| [?a ?b]                    | bが挿入(複数は返せない！) |
+
+入力関数はどのような結果を返すだろうか。my-test-translate-eventが ~[?a]~ を返すようにした上で試してみる。
+
+#+begin_src elisp
+(read-event "Prompt: ") ;; => (down-mouse-1 (#<window 947 on todo.org<el-vkbd>> 2044 (249 . 473) 88984375 nil 2044 (31 . 23) nil (57 . 13) (8 . 20)))
+(read-char "Prompt: ") ;; ERROR: (error "Non-character input-event")
+(read-char-choice "Prompt: " '(?a ?b)) ;; => 97
+(read-key "Prompt: ") ;; 押し下げ時に返ってこず、解放時にmouse-1
+(read-key-sequence "Prompt: ") ;; => "a"
+#+end_src
+
+疑問点・アイデア:
+- 複数の入力を返せないなら、イベントを新たに追加してしまってはどうか。
+- read-eventにも効かせたいならinput-method-functionを使ってはどうか。
+- バッファローカルなlocal-function-key-mapで十分かもしれない。
+- フレーム跨ぎ(変換前と後のフレームが異なる)問題をどうするか。
+
+*** イベント追加技
+わざわざ変換するのではなく、直接[[elisp-variable:unread-command-events]]に追加してしまえば良い。
+
+#+begin_src elisp
+(defun my-test-translate-event (prompt)
+  (message "Translate curr=%s prompt=%s" current-key-remap-sequence prompt)
+  (setq unread-command-events (list ?a ?b))
+  [])
+#+end_src
+
+こうすると実際に押し下げ時点でaとbが両方バッファに挿入される。
+
+*** input-method-function
+[[elisp-function:read-event]]の説明を読むとinput-methodについて書かれている。
+
+[[https://www.gnu.org/software/emacs/manual/html_node/elisp/Reading-Input.html][Reading Input (GNU Emacs Lisp Reference Manual)]]を見るとread-eventが値を返す前に[[elisp-variable:input-method-function]]が処理を行うことが分かる。
+
+[[https://www.gnu.org/software/emacs/manual/html_node/elisp/Invoking-the-Input-Method.html][Invoking the Input Method (GNU Emacs Lisp Reference Manual)]]
+
+#+begin_quote
+22.8.4 入力メソッドの呼び出し
+
+イベント読み取り関数は、現在の入力メソッドがある場合はそれを呼び出します (「入力メソッド」を参照)。input-method-function の値が nil 以外の場合、関数である必要があります。read-event は、修飾ビットのない印刷文字 (SPC を含む) を読み取ると、その関数を呼び出して、その文字を引数として渡します。
+#+end_quote
+
+#+begin_src elisp
+(defun my-test-input-method-func (char)
+  (message "char=%s" char)
+  (list char))
+(setq-local input-method-function #'my-test-input-method-func)
+;; (setq-local input-method-function 'list)
+#+end_src
+
+残念ながらマウスイベント発生時は呼ばれない。 *修飾ビットのない印刷文字 (SPC を含む) を読み取ると* と書かれている通り。残念。
+
+*** local-function-key-mapを使う?
+local-function-key-mapはマイナーモード、ローカルマップ、グローバルマップ等で使われなかったイベントに対して効く物で、バッファローカルという意味ではない。なので使う意味が無い。
+
+*** フレーム跨ぎ問題
+子フレームで仮想キーボードを表示する場合、マウスイベントが発生するフレームと入力反映させるフレームが異なるという問題がある。
+
+次のコードはマウスイベント発生位置にあるテキストプロパティ my-test-input の値をunread-command-eventsに追加する。
+
+#+begin_src elisp
+(defun my-test-translate-event (prompt)
+  (message "Translate curr=%s prompt=%s" current-key-remap-sequence prompt)
+  (when (= (length current-key-remap-sequence) 1)
+    (let ((event (aref current-key-remap-sequence 0)))
+      (when (mouse-event-p event)
+        (let* ((posn (event-start event))
+               (window (posn-window posn))
+               (point (posn-point posn)))
+          (with-current-buffer (window-buffer window)
+            (when (< point (point-max))
+              (let ((input (get-text-property point 'my-test-input)))
+                (when input
+                  (setq unread-command-events
+                        (append unread-command-events
+                                input
+                                nil))
+                  [])))))))))
+(define-key input-decode-map [down-mouse-1] #'my-test-translate-event)
+;; (define-key input-decode-map [down-mouse-1] nil t)
+#+end_src
+
+つまりそのようなテキストプロパティ付きのテキストをバッファに挿入すると、入力を行うボタンとして機能する。
+
+#+begin_src elisp
+(defun my-test-create-input-button ()
+  (insert (propertize "[Input a b]" 'my-test-input '(?a ?b))))
+;; (my-test-create-input-button) [Input a b]
+#+end_src
+
+my-test-create-input-buttonを評価するとabを入力するボタンがバッファに挿入される。
+
+現在のバッファにあるボタンを押した場合はバッファの遷移が無いので問題なくabが入力される。
+
+しかし現在のバッファ以外にあるボタンを押した場合はどうなるだろうか。
+
+別のウィンドウにあるボタンを押した場合、まだウィンドウが遷移する前なので元のウィンドウのバッファにabが入力される。
+
+別のフレームにあるボタンを押した場合、フレームが遷移してからマウスイベントが発生するため別のフレームで現在選択中のウィンドウにあるバッファ(ボタンがあるバッファではない)にabが入力される。
+
+別フレームをマウスを押してもフレームの遷移が発生しないようにする方法はおそらくない。
+
+一番手っ取り早いのはselect-frame(もしくはselect-frame-set-input-focus)で戻してしまうこと。
+
+#+begin_src elisp
+(defvar my-test-main-frame (selected-frame)) ;; 仮の戻し先
+
+(defun my-test-translate-event (prompt)
+  (message "Translate curr=%s prompt=%s" current-key-remap-sequence prompt)
+  (when (= (length current-key-remap-sequence) 1)
+    (let ((event (aref current-key-remap-sequence 0)))
+      (when (mouse-event-p event)
+        (let* ((posn (event-start event))
+               (window (posn-window posn))
+               (point (posn-point posn)))
+          (with-current-buffer (window-buffer window)
+            (when (< point (point-max))
+              (let ((input (get-text-property point 'my-test-input)))
+                (when input
+                  (select-frame my-test-main-frame)
+                  (setq unread-command-events
+                        (append unread-command-events
+                                input
+                                nil))
+                  [])))))))))
+#+end_src
+
+子フレームであれば親フレームに戻してしまえば良い。
+
+*** 結論
+
+- フィルタ関数は自分の処理すべきイベントが来たときに、unread-command-eventsにキーを追加して[]を返すべし。そうでなければnilを返せば良い。
+- 子フレームを選択させたくなければselect-frameやselect-frame-set-input-focusを使って無理矢理親フレームを選択してしまえば良い。
+
+** DONE Emacsの(マウス・タッチ)イベントからキーを入力する仕組みを作る
+CLOSED: [2025-11-16 Sun 12:43]
+
+** DONE 子フレームをドラッグで移動できるようにする
+CLOSED: [2025-11-16 Sun 17:53]
+** DONE 子フレームを閉じるボタンを追加する
+CLOSED: [2025-11-16 Sun 17:53]
+** DONE Androidでのドラッグ移動がカクつくのを直す
+CLOSED: [2025-11-16 Sun 23:51]
+
+タッチイベント時にタッチでフレームを移動すると、フレームが振動して発散しウィンドウ範囲外に飛び出して見えなくなってしまうことがある。
+フレーム移動直後におかしな座標を持つtouchscreen-updateイベントが発生することが原因。
+touchscreen-updateイベントは指を動かさなくてもフレームを移動しただけで発生する。
+おそらくフレーム位置を変更した直後に変更前のタッチ座標を元にイベントが送られてきているのではないか。
+いずれにせよEmacs Lispからではそれが正しい座標なのか不正な座標なのか判断できない。
+フレーム移動直後のイベントは信用できないので、移動した時刻を記録しておいて、一定時間(vkbd-frame-move-debounce-time変数)経った後でなければ処理しないようにした。
+
+** DONE シフトキーで入力する文字を表示できるようにする
+CLOSED: [2025-11-16 Sun 23:50]
+** DONE レイアウトとスタイルを分離する
+CLOSED: [2025-11-16 Sun 23:49]
+** DONE キーを半分ずらせるようにする
+CLOSED: [2025-11-16 Sun 23:50]
+
+** DONE JPキーボードレイアウトを追加する
+CLOSED: [2025-11-16 Sun 23:49]
+** DONE USキーボードレイアウトを追加する
+CLOSED: [2025-11-16 Sun 23:49]
+** DONE シフトキー併用で記号を入力できるようにする
+CLOSED: [2025-11-17 Mon 11:35]
+キーを表すのにkey-typeではなくkey-dataという構造を使うようにする。
+key-dataは一つのキーを表し、key-typeは実際に入力されるものを表す。
+** DONE よりコンパクトなレイアウトを追加する
+CLOSED: [2025-11-17 Mon 11:37]
+- vkbd-layout-10x7 : 記号の1文字入力にこだわらないレイアウト
+- vkbd-layout-10x6 : ほとんどの記号にShiftが必要、InsとDelを削除
+** DONE グローバルキーボードのopen・closeコマンドを作る
+CLOSED: [2025-11-17 Mon 12:25]
+M-x vkbd-open-global-keyboardでキーボードを開き、M-x vkbd-close-global-keyboardで閉じるというだけのものがあれば便利。
+** DONE ツールバーにグローバルキーボードトグルボタンを追加する
+CLOSED: [2025-11-17 Mon 16:32]

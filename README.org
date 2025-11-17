@@ -1,0 +1,139 @@
+#+TITLE: Emacs Virtual Keyboard
+
+This Emacs Lisp library displays a virtual keyboard (also known as an on-screen keyboard or software keyboard) within Emacs.
+
+* Screenshots
+
+The following image is a screenshot of Emacs for Android (Native App).
+
+[[file:./screenshot/android-screen.png]]
+
+The keyboard displayed in the middle is the virtual keyboard created by this library.
+
+Tapping the keyboard icon in the toolbar toggles the display of this virtual keyboard.
+
+By the way, at the bottom is the flick input panel from ATOK, a Japanese IME app. While it's possible to switch to a full keyboard like Hacker's Keyboard, flick input is better for Japanese typing and switching between keyboards is cumbersome. So I created this library to display both simultaneously.
+
+* Requirements
+
+- Emacs 30.1 or later
+- Graphics display environment
+
+* Usage
+
+Place the .el files of this library in a location on your load-path.
+
+To display the virtual keyboard, load vkbd.el and type:
+
+: M-x vkbd-open-global-keyboard
+
+To add a button to toggle the keyboard to the toolbar, add the following code to your init.el:
+
+#+begin_src elisp
+(autoload 'vkbd-add-to-tool-bar "vkbd-tool-bar" nil t)
+(vkbd-add-to-tool-bar)
+#+end_src
+
+Or simply type:
+
+: M-x vkbd-add-to-tool-bar
+
+* Layouts
+
+The following keyboard layouts are provided as presets. You can also create new layouts.
+
+** vkbd-layout-10x9
+
+[[file:screenshot/layout-10x9.png]]
+
+Limited to 10 columns wide, it can be comfortably operated even on vertically-oriented displays like smartphones. All ASCII symbols can be entered without shift.
+
+** vkbd-layout-10x7
+
+[[file:screenshot/layout-10x7.png]]
+
+Based on vkbd-layout-10x9, reduced to 7 rows. Most symbols require shift to enter, but some can be entered without shift.
+
+** vkbd-layout-10x6
+
+[[file:screenshot/layout-10x6.png]]
+
+The most compact layout with one more row removed from vkbd-layout-10x7. Almost all symbols require shift to enter. Also, Ins and Del keys are omitted.
+
+** vkbd-layout-us
+
+[[file:screenshot/layout-us.png]]
+
+US keyboard-like layout. The width is wide, so it may not fit within the parent frame without size adjustment.
+
+** vkbd-layout-jp
+
+[[file:screenshot/layout-jp.png]]
+
+Japanese keyboard-like layout. The width is wide, so it may not fit within the parent frame without size adjustment.
+
+* Customization
+
+M-x customize-group vkbd
+
+** Customization Variables and Faces
+
+Global keyboard settings:
+- `vkbd-global-keyboard-options' : Settings applied only to the global keyboard (search for ~(plist-get options~ to find available options)
+
+Frame settings:
+- `vkbd-keyboard-frame-parameters' : Frame parameters (note that changes may not be immediately reflected due to frame reuse)
+- `vkbd-recycle-frames' : Whether to pool and reuse frames (you can delete all pooled frames with M-x vkbd-delete-all-unused-frames)
+
+Default layout & style:
+- `vkbd-default-keyboard-layout' : Default layout
+- `vkbd-default-keyboard-style' (currently only text01 style is available)
+
+Text style settings:
+- Variables:
+  - `vkbd-text-key-width' : Key width (in characters)
+  - `vkbd-text-column-separator-width' : Width of spacing between columns (horizontal spacing between keys)
+  - `vkbd-text-row-separator-height' : Height of spacing between rows (vertical spacing between keys)
+- Faces
+  - `vkbd-text-keyboard' : Entire keyboard
+  - `vkbd-text-key-common' : Key area
+  - `vkbd-text-key' : Normal key
+  - `vkbd-text-key-invisible' : Invisible key (used to adjust key positions)
+  - `vkbd-text-column-separator' : Spacing between columns (horizontal)
+  - `vkbd-text-row-separator' : Spacing between rows (vertical)
+  - `vkbd-title-bar' : Entire title bar
+  - `vkbd-close-button' : Close button
+  - `vkbd-title-caption' : Title bar text
+
+** How to Adjust Size
+
+The easiest way is to adjust the :height attribute of the vkbd-text-keyboard face.
+
+Another method might be to change the font parameter in vkbd-keyboard-frame-parameters.
+
+* Using from Emacs Lisp
+
+You can create multiple keyboards with arbitrary settings from Emacs Lisp using code like this:
+
+#+begin_src elisp
+(setq my-keyboard
+      (vkbd-make-keyboard
+       '(:title
+         "My ABCD Keyboard"
+         :layout ((?a ?b ?c ?d)
+                  (?A ?B ?C ?D)))))
+
+(vkbd-keyboard-live-p my-keyboard) ;; => t
+
+(vkbd-delete-keyboard my-keyboard)
+#+end_src
+
+* License
+
+This software is licensed under GPLv3. You are free to use, modify and distribute this software.
+
+If you wish to register this software in any package archive, please fork this repository, make the necessary modifications to fit the package archive's requirements, and submit the registration on your own. Also continue with the necessary maintenance. You don't need my permission.
+
+I also welcome you to publish your improved version. If that works better than mine, I might start using it too. I may suddenly be unable to develop, and I cannot guarantee any continued development. This software is the result of what I want, so please add what you want yourself.
+
+I am not proficient in English, so please do not expect continuous communication in English. I have spent a long time using translation software to write this text, but I am not confident that the intended meaning is accurately conveyed. I don't think it has ended up with the opposite meaning, but subtle nuances may be missing.
