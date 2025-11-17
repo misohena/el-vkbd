@@ -7,7 +7,6 @@
 ** TODO 修飾キーロック時にキーの色を変更する
 ** TODO シフトキーの状態で大文字小文字の表示を切り替える
 ** TODO フレームの位置を記憶する
-** TODO row-separatorをもう少し狭くする
 ** TODO 長押しでキーリピートする
 ** TODO フレームの入力フォーカスを制御する
 - できるだけキーにフォーカスして、フォーカスが外れたら閉じるモード
@@ -247,3 +246,7 @@ CLOSED: [2025-11-17 Mon 12:25]
 M-x vkbd-open-global-keyboardでキーボードを開き、M-x vkbd-close-global-keyboardで閉じるというだけのものがあれば便利。
 ** DONE ツールバーにグローバルキーボードトグルボタンを追加する
 CLOSED: [2025-11-17 Mon 16:32]
+** DONE row-separatorをもう少し狭くする
+CLOSED: [2025-11-17 Mon 23:37]
+狭くならない原因はline-spacingだった。frame-parameterのline-spacingパラメータは無視されるみたい。私はデフォルト値(グローバル値)を4にしているから、それが使われて行間が大きくなっていた。
+vkbd-keyboard-buffer-line-spacing変数を追加。

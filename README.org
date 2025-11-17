@@ -94,6 +94,7 @@ Text style settings:
   - `vkbd-text-key-width' : Key width (in characters)
   - `vkbd-text-column-separator-width' : Width of spacing between columns (horizontal spacing between keys)
   - `vkbd-text-row-separator-height' : Height of spacing between rows (vertical spacing between keys)
+  - `vkbd-keyboard-buffer-line-spacing' : `line-spacing' value in keyboard buffers
 - Faces
   - `vkbd-text-keyboard' : Entire keyboard
   - `vkbd-text-key-common' : Key area

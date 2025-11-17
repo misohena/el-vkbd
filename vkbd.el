@@ -593,6 +593,14 @@ SIZE is a cons cell (WIDTH . HEIGHT) specifying the frame size in pixels."
   "<wheel-down>" #'ignore
   )
 
+(defcustom vkbd-keyboard-buffer-line-spacing nil
+  "`line-spacing' value in keyboard buffers."
+  :type '(choice (const :tag "Global value" global)
+                 (const :tag "No extra space" nil)
+                 (integer :tag "In pixels")
+                 (float :tag "Relative to the default frame line height"))
+  :group 'vkbd-text-style)
+
 (defconst vkbd-keyboard-buffer-name " *Virtual Keyboard*")
 
 (defvar-local vkbd-keyboard-buffer-keyboard nil)
@@ -606,6 +614,13 @@ FRAME is the frame where this keyboard will be displayed."
     (with-current-buffer buffer
       (vkbd-keyboard-buffer-mode)
       (setq-local vkbd-keyboard-buffer-keyboard keyboard)
+      ;; Update `line-spacing'
+      (let ((spec (if (plist-member options :line-spacing)
+                      (plist-get options :line-spacing)
+                    vkbd-keyboard-buffer-line-spacing)))
+        (unless (eq spec 'global)
+          (setq-local line-spacing spec)))
+      ;; Make buffer contents
       (let ((inhibit-read-only t))
         (vkbd-keyboard-style--make-buffer-contents options))
       (goto-char (point-min)))
@@ -1146,7 +1161,7 @@ Return a cons cell (EVENTS . PRESSED-MODIFIERS) where:
          `(space :width ,width))
        'face (vkbd-get-face-opt options 'vkbd-text-column-separator)))))
 
-(defcustom vkbd-text-row-separator-height 0.08
+(defcustom vkbd-text-row-separator-height 0.1
   "Height of spacing between rows (vertical spacing between keys)."
   :type 'float
   :group 'vkbd-text-style)
