@@ -1304,7 +1304,7 @@ Almost all symbols require shift to enter. Ins and Del keys are removed.")
     (M-x C-x C-c C-g (:w 0.5) (nil :w 3) (:w 0.5) del end pdw (:w 0.5) lft dwn rit))
   "US keyboard-like layout.")
 
-(defcustom vkbd-default-keyboard-layout 'vkbd-layout-10x6
+(defcustom vkbd-default-keyboard-layout 'vkbd-layout-10x7
   "Default keyboard layout to use.
 
 This can be either a symbol naming a variable that holds a layout list,
