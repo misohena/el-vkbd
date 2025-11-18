@@ -270,3 +270,67 @@ Pixel7での私のフォント設定だと、あと1列分くらいは入る。
 _もプログラミング言語によってはよく使うのでシフト無し。
 !#$%はUSでもJPでも数字キーの同じ場所にある。これらはそのままの並びで上の方に並べる。
 全体的に、右上のShiftの近くに寄せる。
+** DONE 2ストロークキーが入力できない問題を修正する
+CLOSED: [2025-11-18 Tue 19:10]
+
+例えば C-c C- と複数ストロークのキーを押したときに、<mouse-1> undefinedと表示される。
+
+二つ目のC-を押したときになぜか down-mouse-1 に対する変換関数は呼ばれないのにその後の mouse-1 は呼ばれる。そして C-c mouse-1 を実行しようとして、そんな組み合わせはキーマップにないのでエラーになる。
+
+modifier-bar-modeはなぜかこれが問題なく動作する。modifier-barでC-を押した後キーでcを押し、その後にmodifier-barでC-を押すと C-c tool-bar control- と表示されるが、その時にちゃんと変換関数は呼ばれており、続いてcなどと押せば[tool-bar control-]+?cが[3]になってC-c C-cを押したことになる。
+
+(read-key-sequence "Prompt: ") のレベルでそのような挙動になる。
+
+#+begin_src elisp
+(defun my-mouse-translator (prompt)
+  (message "Enter translator %s" current-key-remap-sequence)
+  [?q])
+
+;; (define-key input-decode-map (kbd "<down-mouse-1>") nil t)
+(define-key input-decode-map (kbd "<down-mouse-1>") #'my-mouse-translator)
+#+end_src
+
+上を評価してからマウスボタンを押すと押し下げた瞬間にメッセージが表示される。
+
+C-cをキーボードから直接した後、マウスボタンを押し下げると「C-c (C-h for help)」または「C-c down-mouse-1-(C-h for help)」と表示される(C-cを押してからメッセージが出てからマウスを押すと後者になるようだ)。そしてマウスボタンを解放すると C-c <mouse-1> is undefinedと表示される。
+
+#+begin_src elisp
+;; (define-key input-decode-map (kbd "<down-mouse-1>") nil t)
+(define-key input-decode-map (kbd "<down-mouse-1>") #'my-mouse-translator)
+;; (define-key input-decode-map (kbd "C-c <down-mouse-1>") nil t)
+(define-key input-decode-map (kbd "C-c <down-mouse-1>") #'my-mouse-translator)
+#+end_src
+
+としても無駄。キーでC-cを押してからマウスを押し下げてもC-c <down-mouse-1>の変換関数は呼ばれない。これはC-x、ESCでも同じだった。
+
+#+begin_src elisp
+;; (define-key input-decode-map (kbd "<mouse-1>") nil t)
+(define-key input-decode-map (kbd "<mouse-1>") #'my-mouse-translator)
+#+end_src
+
+しかしこれは呼ばれる。C-c の後に押し下げても何も呼ばれないのは同じ。しかしその後解放するとmouse-1に対する変換関数は呼ばれる。ちなみにこれはmouse-1をdrag-mouse-1にしても同じ。解放イベントだけ変換される。down-mouse-1がどこへ消えたのか分からない。
+
+まとめると、C-cやC-x、ESCのようなプレフィックスの直後ではdown-mouse-1は変換されず、その後のmouse-1やdrag-mouse-1は変換される。
+
+ただしmouse-2はdown-mouse-2だけ登録してもプレフィックス無しでも変換関数は呼ばれない。down-mouse-3は大丈夫。
+
+もう何が何だか分からない。
+
+今できること:
+- down-mouse-1とmouse-1の両方を監視する。
+- down-mouse-1が来たらmouse-1かdrag-mouse-1を待ってから終了。
+- いきなりmouse-1が来たらすぐに終了。
+
+↑はダメだった。down-mouse-1の変換中にread-eventを呼ぶとdown-mouse-1の変換が再度呼ばれて無限ループに陥った。
+
+結局最後は unread-command-events を使うのを止めた。つまり変換結果を完璧に処理すれば良い。
+- キーボードバッファ内
+  - キーがある場所
+    - イベントに変換できた
+      [ イベント ... ]
+    - イベントに変換できなかった(修飾キー等)
+      [ ]  (握りつぶす)
+  - キーが無い場所
+    nil (閉じるボタンを押したりドラッグによるフレーム移動が出来るように)
+- キーボードバッファ外
+  nil (他での利用を邪魔しない)

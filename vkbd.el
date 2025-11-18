@@ -245,30 +245,6 @@ Return a list of events corresponding to KEY-TYPE."
     (vkbd-set-keyboard-pressed-modifiers keyboard new-pressed-modifiers)
     events))
 
-(defun vkbd-post-key (keyboard key-type)
-  "Post events for KEY-TYPE from KEYBOARD.
-If KEY-TYPE is nil, do nothing."
-  (when key-type ;; Valid key-type
-    (let ((events (vkbd-keyboard-key-type-to-events keyboard key-type)))
-      (when events ;; nil for ctl, shf, etc.
-        (funcall (or (plist-get (vkbd-keyboard-options keyboard) :post-events)
-                     #'vkbd-post-events-to-unread-command-events)
-                 keyboard
-                 events)))
-    ;; Prevent current-key-remap-sequence
-    ;; (If KEY-TYPE is `ctl', change pressed-modifiers, post nothing,
-    ;; and return [].)
-    []))
-
-(defun vkbd-post-events-to-unread-command-events (_keyboard events)
-  "Post EVENTS to `unread-command-events' and switch focus to the parent frame."
-  ;; Note: The selected frame and current buffer may be switched.
-  (vkbd-select-parent-frame (selected-frame))
-
-  (setq unread-command-events
-        (append unread-command-events
-                (mapcar #'identity events))))
-
 
 ;;;;; Frame Management
 
@@ -563,11 +539,12 @@ SIZE is a cons cell (WIDTH . HEIGHT) specifying the frame size in pixels."
   "If FRAME has a parent frame, select it and transfer input focus to it."
   (interactive)
   (when-let* ((parent (frame-parent frame)))
-    (vkbd-log "Select Parent Frame: (before)selected frame=%s buffer=%s"
-              (selected-frame) (current-buffer))
-    (select-frame-set-input-focus parent)
-    (vkbd-log "Select Parent Frame: (after)selected frame=%s buffer=%s"
-              (selected-frame) (current-buffer))))
+    ;; (vkbd-log "Select Parent Frame: (before)selected frame=%s buffer=%s"
+    ;;           (selected-frame) (current-buffer))
+    (select-frame-set-input-focus parent t)
+    ;; (vkbd-log "Select Parent Frame: (after)selected frame=%s buffer=%s"
+    ;;           (selected-frame) (current-buffer))
+    ))
 
 
 ;;;;; Keyboard Buffer
@@ -728,37 +705,37 @@ Returns nil otherwise."
 PROMPT is the prompt string for the current key sequence.
 
 Return the translated key sequence vector, or nil if no translation is needed.
-Return an empty vector ([]) to cancel the input event.
-
-This function may cancel the input event and add events to
-`unread-command-events'."
+Return an empty vector ([]) to cancel the input event."
   ;; TODO: `vkbd-text-keyboard-translate-event'や
   ;; `vkbd-text-keyboard-key-type-at-event'との役割分担を見直したい。
   ;; 将来的に専用バッファ以外にもキーボードを置けるようにしたいかもしれない。
   ;; それなら処理対象イベント判別の時点で色々と変えなければならなくなる。
   (when-let* ((event (vkbd-current-key-remap-event))
-              (buffer (vkbd-event-to-keyboard-buffer event)))
-    ;; TODO: この中でvkbd-select-parent-frameが呼ばれて選択フレームも
-    ;;カレントバッファも変わる可能性がある。そうするとここで元のバッファ
-    ;;に戻しても良いのかよく分からない。(with-current-buffer buffer
-    (set-buffer buffer)
-    (vkbd-keyboard-style--translate-event
-     (vkbd-keyboard-buffer-keyboard buffer) prompt event)))
+              (buffer (vkbd-event-to-keyboard-buffer event))
+              (keyboard (vkbd-keyboard-buffer-keyboard buffer)))
+    (vkbd-log "Translate Event: Event occurred in keyboard buffer %s" event)
+    (let ((result (vkbd-keyboard-style--translate-event keyboard prompt event)))
+      (vkbd-log "Translate Event: Return %s" result)
+      result)))
+
+
+(defconst vkbd-translation-event-types
+  '(down-mouse-1
+    mouse-1 drag-mouse-1
+    touchscreen-begin touchscreen-update touchscreen-end))
 
 (defun vkbd-global-setup ()
   ;; TODO: What to do if it's already in use.
-  (define-key input-decode-map [down-mouse-1]
-              #'vkbd-translate-keyboard-buffer-event)
-  (define-key input-decode-map [touchscreen-begin]
-              #'vkbd-translate-keyboard-buffer-event))
+  (dolist (event-type vkbd-translation-event-types)
+    (define-key input-decode-map (vector event-type)
+                #'vkbd-translate-keyboard-buffer-event)))
 
 (defun vkbd-global-teardown ()
-  (when (eq (lookup-key input-decode-map [down-mouse-1])
-            'vkbd-translate-keyboard-buffer-event)
-    (define-key input-decode-map [down-mouse-1] nil t))
-  (when (eq (lookup-key input-decode-map [touchscreen-begin])
-            'vkbd-translate-keyboard-buffer-event)
-    (define-key input-decode-map [touchscreen-begin] nil t)))
+  (dolist (event-type vkbd-translation-event-types)
+    (let ((vec (vector event-type)))
+      (when (eq (lookup-key input-decode-map vec)
+                'vkbd-translate-keyboard-buffer-event)
+        (define-key input-decode-map vec nil t)))))
 
 
 ;;;;; Key Modifiers
@@ -975,10 +952,6 @@ Return a cons cell (EVENTS . PRESSED-MODIFIERS) where:
 
 ;;;;;; Text Keyboard Input
 
-(defun vkbd-text-keyboard-translate-event (keyboard _prompt event)
-  ;; Return [], if posted.
-  (vkbd-post-key keyboard (vkbd-text-keyboard-key-type-at-event event)))
-
 (defun vkbd-text-keyboard-key-type-at-event (event)
   "Return the key type at the position where EVENT occurred."
   ;; TODO: vkbd-keyboardテキストプロパティがあればキーボードバッファで
@@ -995,6 +968,22 @@ Return a cons cell (EVENTS . PRESSED-MODIFIERS) where:
      (with-current-buffer buffer
        (get-text-property (posn-point (event-start event)) 'vkbd-key-data))
      (vkbd-keyboard-pressed-modifiers keyboard))))
+
+(defun vkbd-text-keyboard-translate-event (keyboard _prompt event)
+  (when-let* ((key-type (vkbd-text-keyboard-key-type-at-event event)))
+    (vkbd-log "Translate Event: key-type=%s" key-type)
+    (cond
+     ;; ((memq (car-safe event) '(down-mouse-1 touchscreen-begin))
+     ;;  (vkbd-post-key keyboard key-type)
+     ;;  ;; pressed
+     ;;  )
+     ((memq (car-safe event) '(mouse-1 touchscreen-end))
+      (vkbd-select-parent-frame)
+      (apply #'vector (vkbd-keyboard-key-type-to-events keyboard key-type)))
+     (t
+      ;; Return [] if EVENT occurs at a key position.
+      ;; Return nil if EVENT occurs at a non-key position.
+      []))))
 
 
 ;;;;;; Text Keyboard Appearance
@@ -1506,10 +1495,9 @@ ARGS are passed to the function."
   "Translate EVENT using the style specified in OPTIONS.
 
 PROMPT is the prompt string for the current key sequence."
-  (when (derived-mode-p 'vkbd-keyboard-buffer-mode)
-    (vkbd-keyboard-style-funcall
-     options :translate-event nil
-     options prompt event)))
+  (vkbd-keyboard-style-funcall
+   options :translate-event nil
+   options prompt event))
 
 
 ;;;; Utilities
