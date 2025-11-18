@@ -803,15 +803,15 @@ Return the resulting modified key."
     (C-x :text "C-x" :seq (control ?x))
     (C-g :text "C-g" :seq (control ?g))
     (M-x :text "M-x" :seq (meta ?x))
-    (spc :text "SPC" :seq (?\x20))
+    (spc :text " " :seq (?\x20)) ;; "SPC"
     (bs  :text "BS" :seq (backspace))
     (ret :text "Ret" :seq (return))
     (pup :text "PUp" :seq (prior))
     (pdw :text "PDown" :seq (next))
     (up  :text "↑" :seq (up))
-    (lft :text "←" :seq (left))
+    (lft :text "←" :seq (left)) ;; "<-"
     (dwn :text "↓" :seq (down))
-    (rit :text "→" :seq (right))
+    (rit :text "→" :seq (right)) ;; "->"
     (ins :text "Ins" :seq (insert))
     (del :text "Del" :seq (delete))
     (hom :text "Home" :seq (home))
