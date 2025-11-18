@@ -29,6 +29,18 @@
 ** TODO サイズをoptionsで変更できるようにしたい
 今はvkbd-text-keyboardを変更しなければならない。
 
+** TODO タイトルバーにヘッダーラインを使う
+[[https://ayatakesi.github.io/lispref/29.1/html/Child-Frames.html][Child Frames (GNU Emacs Lisp Reference Manual)]]にも書いてあるとおりheader-lineをタイトルバー代わりに使える。
+
+- フレームパラメータのdrag-with-header-lineをt
+- バッファーローカル変数のheader-line-formatに閉じるボタンとキャプション
+- 閉じるボタンのイベントは[header-line mouse-1]等に登録する
+
+これでマウスで移動することも閉じることもできる。
+
+しかしAndroidでタッチによる移動は出来なかった。
+実装されていない？　それじゃ意味が無いので元に戻した。
+
 * Finished
 ** DONE 子フレームにキーボードを表示する
 CLOSED: [2025-11-15 Sat 00:31]

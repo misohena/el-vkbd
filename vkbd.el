@@ -966,7 +966,9 @@ Return a cons cell (EVENTS . PRESSED-MODIFIERS) where:
               (keyboard (vkbd-keyboard-buffer-keyboard buffer)))
     (vkbd-key-data-to-key-type
      (with-current-buffer buffer
-       (get-text-property (posn-point (event-start event)) 'vkbd-key-data))
+       (let ((pos (posn-point (event-start event))))
+         (when (integerp pos)
+           (get-text-property pos 'vkbd-key-data))))
      (vkbd-keyboard-pressed-modifiers keyboard))))
 
 (defun vkbd-text-keyboard-translate-event (keyboard _prompt event)
