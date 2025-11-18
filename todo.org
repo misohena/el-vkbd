@@ -11,6 +11,7 @@
 ** TODO フレームの入力フォーカスを制御する
 - できるだけキーにフォーカスして、フォーカスが外れたら閉じるモード
 - できるだけ親フレームにフォーカスするモード
+- touchscreen-updateやendでフォーカスが戻ってしまっている？
 ** TODO SVGキーボードスタイルを追加する
 ** TODO Emacsのオンスクリーンキーボードとして使えるようにする
 ** TODO vkbd-tool-bar-modeを作る?
@@ -250,3 +251,11 @@ CLOSED: [2025-11-17 Mon 16:32]
 CLOSED: [2025-11-17 Mon 23:37]
 狭くならない原因はline-spacingだった。frame-parameterのline-spacingパラメータは無視されるみたい。私はデフォルト値(グローバル値)を4にしているから、それが使われて行間が大きくなっていた。
 vkbd-keyboard-buffer-line-spacing変数を追加。
+** DONE シフト時キーがある場合のraise値をカスタマイズできるようにする
+CLOSED: [2025-11-18 Tue 11:33]
+line-spacingを小さくしたら下に寄りがちになってしまった。
+シフトキーが無いときも調整できた方が良いかも。
+
+vkbd-text-key-raise変数を追加。
+
+ついでにvkbd-text-keyboard-key-data-string関数を全体的に修正する。

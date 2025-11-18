@@ -939,6 +939,8 @@ Return a cons cell (EVENTS . PRESSED-MODIFIERS) where:
 ;; TEST: (vkbd-key-data-key-types ?a) => (97)
 ;; TEST: (vkbd-key-data-key-types '(?a)) => (97)
 ;; TEST: (vkbd-key-data-key-types '(:w 1.5)) => nil
+;; TEST: (vkbd-key-data-key-types '(nil :w 1.5)) => (nil)
+;; TEST: (vkbd-key-data-key-types '(nil ?a :w 1.5)) => (nil 97)
 ;; TEST: (vkbd-key-data-key-types '(esc :w 1.5)) => (esc)
 
 (defun vkbd-key-data-properties (key-data)
@@ -1107,25 +1109,54 @@ Return a cons cell (EVENTS . PRESSED-MODIFIERS) where:
     ;; TODO: Select a string that matches KEY-WIDTH ("Ctl" "Ctrl" "Control")
     (plist-get (alist-get key-type vkbd-key-type-alist) :text))))
 
+(defcustom vkbd-text-key-raise '((0.0) (0.0 0.5))
+  "Vertical position of characters when displaying multiple characters per key.
+
+Format:
+  ((raise-without-shift) (raise-with-shift-char1 raise-with-shift-char2))
+
+Each value is a multiple of the text height used for the `raise' display
+property. Positive values raise text above the baseline; negative values
+lower it."
+  :type '(list :tag "By condition"
+               (list :tag "Without shift"
+                     (float :tag "Raise factor"))
+               (list :tag "With shift"
+                     (float :tag "First character raise factor")
+                     (float :tag "Second character raise factor")))
+  :group 'vkbd)
+
 (defun vkbd-text-keyboard-key-data-string (options key-data)
+  "Generate the display string for a key based on KEY-DATA.
+OPTIONS specifies the keyboard configuration."
   (let* ((key-types (vkbd-key-data-key-types key-data))
-         (cell-props (vkbd-key-data-properties key-data))
-         (key-width-ratio (or (plist-get cell-props :width)
-                              (plist-get cell-props :w)))
+         (key-props (vkbd-key-data-properties key-data))
+         (key-width-ratio (or (plist-get key-props :width)
+                              (plist-get key-props :w)))
          (key-width (vkbd-text-key-width options key-width-ratio))
-         (key-type-1 (car key-types))
-         (key-type-2 (cadr key-types))
-         (key-text-1 (vkbd-key-type-string options key-type-1 key-width))
-         (key-text-2 (vkbd-key-type-string options key-type-2 key-width))
-         (text (if (and key-text-1 key-text-2)
-                   (concat (propertize key-text-1
-                                       'display
-                                       '(raise -0.25))
-                           (when (>= vkbd-text-key-width 5) " ")
-                           (propertize key-text-2
-                                       'display
-                                       '(raise 0.25)))
-                 key-text-1)))
+         (num-types (length key-types))
+         (width-per-type (max 1 (/ key-width (max 1 num-types))))
+         (raise-spec (or (plist-get options :text-key-raise)
+                         vkbd-text-key-raise))
+         (type-strs
+          (cl-loop
+           for type in key-types
+           for type-index from 0
+           for raise-factor = (nth type-index (nth (1- num-types) raise-spec))
+           for str = (or (vkbd-key-type-string options type width-per-type) " ")
+           collect (if raise-factor
+                       (propertize str 'display (list 'raise raise-factor))
+                     str)))
+         (type-strs-total-width (apply #'+ (mapcar #'string-width type-strs)))
+         (text
+          (when type-strs
+            (mapconcat
+             #'identity type-strs
+             ;; Add separators only if there is enough whitespace
+             ;; [ab] [ab ] [ ab ] [ a b ] [ a b  ] [  a b  ]
+             (if (>= (- (- key-width 2) type-strs-total-width) (1- num-types))
+                 " "
+               nil)))))
     (if text
         (vkbd-insert-propertized
          (vkbd-text-key-centering options text key-width-ratio)
