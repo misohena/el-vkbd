@@ -1322,6 +1322,17 @@ Most symbols require shift to enter.")
   "Compact version of `vkbd-layout-10x7' with 6 rows.
 Almost all symbols require shift to enter. Ins and Del keys are removed.")
 
+(defconst vkbd-layout-11x7
+  '((esc tab ?^  ?@  ?*  ?+  ?-      ?=      ?\(      ?\)      shf)
+    (?1  ?2  ?3  ?4  ?5  ?6  (?7 ?!) (?8 ?#) (?9 ?$)  (?0 ?%)  (?` ?~))
+    (?q  ?w  ?e  ?r  ?t  ?y  ?u      ?i      (?o ?{)  (?p ?})  (?' ?&))
+    (?a  ?s  ?d  ?f  ?g  ?h  ?j      ?k      (?l ?\[) (?: ?\]) (?\" ?|))
+    (?z  ?x  ?c  ?v  ?b  ?n  ?m      ?,      (?. ?<)  (?\; ?>) (?/ ?\\))
+    (shf ctl met hom end ins pup ?_  up  ??  bs)
+    (M-x C-x C-c C-g spc del pdw lft dwn rit ret))
+  "Compact layout based on `vkbd-layout-10x7' with one additional column.
+Allows entering more symbols without shift while maintaining compactness.")
+
 (defconst vkbd-layout-jp
   '((esc (:w 0.5) f1 f2 f3 f4 f5 f6 f7 f8 f9 f10 f11 f12)
     (nil (?1 ?!) (?2 ?\") (?3 ?#) (?4 ?$) (?5 ?%) (?6 ?&)
@@ -1358,6 +1369,7 @@ or a layout list itself."
   :type '(choice (const vkbd-layout-10x9)
                  (const vkbd-layout-10x7)
                  (const vkbd-layout-10x6)
+                 (const vkbd-layout-11x7)
                  (const vkbd-layout-us)
                  (const vkbd-layout-jp)
                  (symbol :tag "Variable name")

@@ -60,6 +60,12 @@ Based on vkbd-layout-10x9, reduced to 7 rows. Most symbols require shift to ente
 
 The most compact layout with one more row removed from vkbd-layout-10x7. Almost all symbols require shift to enter. Also, Ins and Del keys are omitted.
 
+** vkbd-layout-11x7
+
+[[file:screenshot/layout-11x7.png]]
+
+Compact layout based on `vkbd-layout-10x7' with one additional column. Allows entering more symbols without shift while maintaining compactness.
+
 ** vkbd-layout-us
 
 [[file:screenshot/layout-us.png]]
