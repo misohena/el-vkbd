@@ -99,6 +99,7 @@ Text style settings:
   - `vkbd-text-keyboard' : Entire keyboard
   - `vkbd-text-key-common' : Key area
   - `vkbd-text-key' : Normal key
+  - `vkbd-text-key-pressed' : Pressed key
   - `vkbd-text-key-invisible' : Invisible key (used to adjust key positions)
   - `vkbd-text-column-separator' : Spacing between columns (horizontal)
   - `vkbd-text-row-separator' : Spacing between rows (vertical)
