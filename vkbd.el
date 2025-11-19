@@ -1025,13 +1025,15 @@ Return a cons cell (EVENTS . PRESSED-MODIFIERS) where:
 
 (defface vkbd-text-key-invisible
   '((t :inherit vkbd-text-key-common))
-  "Face for invisible keys."
+  "Face for invisible keys.
+Invisible keys are used to adjust the position of normal keys."
   :group 'vkbd-text-style)
 
 (defface vkbd-text-column-separator
   '((t (:inherit vkbd-text-keyboard
                  :height 1.6)))
-  "Face for spacing between columns."
+  "Face for spacing between columns.
+Changing the height of this face also changes the height of keys."
   :group 'vkbd-text-style)
 
 (defface vkbd-text-row-separator
