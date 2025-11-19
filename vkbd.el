@@ -91,6 +91,29 @@
              vkbd-log-output)
        (message ,format-string ,@args))))
 
+(defun vkbd-log-watch (regexp)
+  "Enable log output for logs whose format-string matches REGEXP.
+
+The format-string is the first argument passed to the `vkbd-log' macro.
+
+If an empty string is specified, all log output is enabled.
+
+To output logs, `vkbd-log-generate' must be set to non-nil before
+loading the library."
+  (interactive (list (read-regexp
+                      "Regexp to match format-string of vkbd-log (empty for all)")))
+  (message "Log output enabled")
+  (setq vkbd-log-output
+        (if (and (stringp regexp) (not (string-empty-p regexp)))
+            regexp
+          t)))
+
+(defun vkbd-log-unwatch ()
+  "Disable log output."
+  (interactive)
+  (setq vkbd-log-output nil)
+  (message "Log output disabled"))
+
 
 ;;;; Global Keyboard
 
