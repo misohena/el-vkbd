@@ -40,6 +40,7 @@
 ;;   Text style settings:
 ;;   - Variables:
 ;;     - `vkbd-text-key-width'
+;;     - `vkbd-text-key-raise'
 ;;     - `vkbd-text-column-separator-width'
 ;;     - `vkbd-text-column-separator-display'
 ;;     - `vkbd-text-row-separator-height'

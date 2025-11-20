@@ -92,6 +92,7 @@ Default layout & style:
 Text style settings:
 - Variables:
   - `vkbd-text-key-width' : Key width (in characters)
+  - `vkbd-text-key-raise' : Vertical position of characters
   - `vkbd-text-column-separator-width' : Width of spacing between columns (horizontal spacing between keys)
   - `vkbd-text-row-separator-height' : Height of spacing between rows (vertical spacing between keys)
   - `vkbd-keyboard-buffer-line-spacing' : `line-spacing' value in keyboard buffers
