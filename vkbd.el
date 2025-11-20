@@ -202,7 +202,8 @@ Return a object that holds all information about the keyboard."
                          :options options
                          :frame frame
                          :buffer nil
-                         :pressed-modifiers nil))
+                         :pressed-modifiers nil
+                         :locked-modifiers nil))
          (buffer (vkbd-make-keyboard-buffer keyboard)))
     ;; Connect the buffer and frame.
     (vkbd-set-keyboard-buffer-to-window (frame-root-window frame) buffer)
@@ -255,11 +256,17 @@ This function is for debugging purposes."
 
 (defun vkbd-keyboard-pressed-modifiers (keyboard)
   "Return the list of currently pressed modifier keys in KEYBOARD."
-  (vkbd-keyboard-property keyboard :pressed-modifiers))
+  (seq-union (vkbd-keyboard-property keyboard :locked-modifiers)
+             (vkbd-keyboard-property keyboard :pressed-modifiers)
+             #'eq))
+
+(defun vkbd-keyboard-modifier-pressed-p (keyboard modifier)
+  "Return t if MODIFIER key is pressed."
+  (not (null (memq modifier (vkbd-keyboard-pressed-modifiers keyboard)))))
 
 (defun vkbd-keyboard-shift-pressed-p (keyboard)
-  "Return non-nil if the shift key is pressed."
-  (memq 'shift (vkbd-keyboard-property keyboard :pressed-modifiers)))
+  "Return t if the shift key is pressed."
+  (vkbd-keyboard-modifier-pressed-p keyboard 'shift))
 
 (defun vkbd-set-keyboard-pressed-modifiers (keyboard modifiers)
   "Set the currently pressed modifier keys in KEYBOARD to MODIFIERS."
@@ -268,6 +275,38 @@ This function is for debugging purposes."
     (setf (vkbd-keyboard-property keyboard :pressed-modifiers) modifiers)
     ;; Update display
     (vkbd-update-keyboard-display keyboard)))
+
+(defun vkbd-keyboard-locked-modifiers (keyboard)
+  "Return the list of currently locked modifier keys in KEYBOARD."
+  (vkbd-keyboard-property keyboard :locked-modifiers))
+
+(defun vkbd-keyboard-modifier-locked-p (keyboard modifier)
+  "Return t if MODIFIER key is locked."
+  (not (null (memq modifier (vkbd-keyboard-locked-modifiers keyboard)))))
+
+(defun vkbd-set-keyboard-locked-modifiers (keyboard modifiers)
+  "Set the currently locked modifier keys in KEYBOARD to MODIFIERS."
+  (unless (seq-set-equal-p (vkbd-keyboard-property keyboard :locked-modifiers)
+                           modifiers)
+    (setf (vkbd-keyboard-property keyboard :locked-modifiers) modifiers)
+    ;; Update display
+    (vkbd-update-keyboard-display keyboard)))
+
+(defun vkbd-set-keyboard-modifier-state (keyboard modifier pressed locked)
+  (if pressed
+      (unless (memq modifier
+                    (vkbd-keyboard-property keyboard :pressed-modifiers))
+        (push modifier (vkbd-keyboard-property keyboard :pressed-modifiers)))
+    (setf (vkbd-keyboard-property keyboard :pressed-modifiers)
+          (delq modifier (vkbd-keyboard-property keyboard :pressed-modifiers))))
+  (if locked
+      (unless (memq modifier
+                    (vkbd-keyboard-property keyboard :locked-modifiers))
+        (push modifier (vkbd-keyboard-property keyboard :locked-modifiers)))
+    (setf (vkbd-keyboard-property keyboard :locked-modifiers)
+          (delq modifier (vkbd-keyboard-property keyboard :locked-modifiers))))
+  ;; Update display
+  (vkbd-update-keyboard-display keyboard))
 
 (defun vkbd-update-keyboard-display (keyboard)
   "Update the appearance of KEYBOARD to match its state."
@@ -283,12 +322,28 @@ keyboard."
   "Convert KEY-TYPE to events, updating pressed modifiers in KEYBOARD.
 
 Return a list of events corresponding to KEY-TYPE."
-  (let* ((pair (vkbd-key-type-to-events
-                key-type (vkbd-keyboard-pressed-modifiers keyboard)))
-         (events (car pair))
-         (new-pressed-modifiers (cdr pair)))
-    (vkbd-set-keyboard-pressed-modifiers keyboard new-pressed-modifiers)
-    events))
+  (if-let* ((modifier (vkbd-key-type-to-simple-modifier key-type)))
+      ;; A simple modifier key was pressed (excluding C-x etc.)
+      (progn
+        ;; Cycle normal => pressed => lock => normal
+        (if (vkbd-keyboard-modifier-pressed-p keyboard modifier)
+            ;; Already pressed
+            (if (vkbd-keyboard-modifier-locked-p keyboard modifier)
+                ;; Unlock & Release
+                (vkbd-set-keyboard-modifier-state keyboard modifier nil nil)
+              ;; Lock
+              (vkbd-set-keyboard-modifier-state keyboard modifier t t))
+          ;; Press the MODIFIER
+          (vkbd-set-keyboard-pressed-modifiers keyboard (list modifier)))
+        ;; No events
+        nil)
+    ;; Not a simple modifier key (character, special key, compound key, etc.)
+    (let* ((pair (vkbd-key-type-to-events
+                  key-type (vkbd-keyboard-pressed-modifiers keyboard)))
+           (events (car pair))
+           (new-pressed-modifiers (cdr pair)))
+      (vkbd-set-keyboard-pressed-modifiers keyboard new-pressed-modifiers)
+      events)))
 
 
 ;;;;; Frame Management
@@ -951,14 +1006,14 @@ Return a cons cell (EVENTS . PRESSED-MODIFIERS) where:
    (vkbd-key-type-to-key-sequence key-type)
    initial-modifiers))
 
-(defun vkbd-key-type-to-modifier (key-type)
+(defun vkbd-key-type-to-simple-modifier (key-type)
   (let ((key-seq (vkbd-key-type-to-key-sequence key-type)))
     (when (and (vkbd-modifier-p (car key-seq))
-               (null (cdr key-seq)))
+               (null (cdr key-seq))) ;; Simple modifier key not compound key
       (car key-seq))))
-;; TEST: (vkbd-key-type-to-modifier 'shf) => shift
-;; TEST: (vkbd-key-type-to-modifier 'ctl) => control
-;; TEST: (vkbd-key-type-to-modifier 'esc) => nil
+;; TEST: (vkbd-key-type-to-simple-modifier 'shf) => shift
+;; TEST: (vkbd-key-type-to-simple-modifier 'ctl) => control
+;; TEST: (vkbd-key-type-to-simple-modifier 'esc) => nil
 
 (defun vkbd-key-type-to-display-string (key-type &optional _key-width)
   (cond
@@ -1129,10 +1184,20 @@ If shift is not pressed, return the base key-type."
   "Return non-nil if KEYOBJ is a pressed modifier key."
   (when-let* ((key-spec (vkbd-key-object-key-spec keyobj))
               (key-type (vkbd-key-spec-base-key-type key-spec))
-              (modifier (vkbd-key-type-to-modifier key-type)))
+              (modifier (vkbd-key-type-to-simple-modifier key-type)))
     (and modifier
          (memq modifier
                (vkbd-keyboard-pressed-modifiers
+                (vkbd-key-object-keyboard keyobj))))))
+
+(defun vkbd-key-object-locked-modifier-p (keyobj)
+  "Return non-nil if KEYOBJ is a locked modifier key."
+  (when-let* ((key-spec (vkbd-key-object-key-spec keyobj))
+              (key-type (vkbd-key-spec-base-key-type key-spec))
+              (modifier (vkbd-key-type-to-simple-modifier key-type)))
+    (and modifier
+         (memq modifier
+               (vkbd-keyboard-locked-modifiers
                 (vkbd-key-object-keyboard keyobj))))))
 
 (defun vkbd-key-object-to-key-type (keyobj keyboard)
@@ -1382,11 +1447,11 @@ lower it."
 (defun vkbd-text-key-obj-face (keyobj)
   (let ((options (vkbd-keyboard-options (vkbd-key-object-keyboard keyobj))))
     (cond
+     ((vkbd-key-object-locked-modifier-p keyobj)
+      (vkbd-get-face-opt options 'vkbd-text-key-locked))
      ((or (vkbd-key-object-pressed keyobj)
           (vkbd-key-object-pressed-modifier-p keyobj))
       (vkbd-get-face-opt options 'vkbd-text-key-pressed))
-     ;; ((vkbd-key-object-locked keyobj)
-     ;;  (vkbd-get-face-opt options 'vkbd-text-key-locked))
      (t
       (vkbd-get-face-opt options 'vkbd-text-key)))))
 
@@ -1574,7 +1639,7 @@ KEY-FUN must leave point at the end of the key."
   '((((type x w32 ns haiku pgtk android) (class color)
       (min-colors 88))	; Like default mode line
      :inherit vkbd-text-key-common
-     :background "red" :foreground "black")
+     :background "#f04040" :foreground "black")
     (((type x w32 ns haiku pgtk android))
      :inherit vkbd-text-key-common
      :background "red" :foreground "white"))
