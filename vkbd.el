@@ -825,6 +825,15 @@ Return the resulting modified key."
 
 ;;;;; Key Types
 
+;; A key-type is converted to an Emacs key sequence. It is either a
+;; symbol representing a specific sequence or a character code point
+;; integer.
+
+;; <key-type> :
+;;   nil          : no key
+;;   <symbol>     : key symbol of `vkbd-key-type-alist'
+;;   <integer>    : character code point
+
 (defconst vkbd-key-type-alist
   '((esc :text "Esc" :seq (escape))
     (tab :text "Tab" :seq (tab))
@@ -939,49 +948,55 @@ Return a cons cell (EVENTS . PRESSED-MODIFIERS) where:
 ;; TEST: (vkbd-key-type-to-modifier 'esc) => nil
 
 
-;;;;; Key Data
+;;;;; Key Specs
 
-;; <key-data>:
+;; A key-spec specifies the properties of a single key on the keyboard.
+;; It consists of 0 to 2 key-types and a property list for additional
+;; properties.
+;; Use nil to insert space equivalent to one key.
+;; Specify a second key-type to define input when the shift key is pressed.
+
+;; <key-spec> :
 ;;   <key-type>
-;;   ([<no-mod-key-type> [<shifted-key-type>]] [<plist>])
-;;
-;; <key-type>:
-;;   nil          : no key
-;;   <symbol>     : key of `vkbd-key-type-alist'
-;;   <integer>    : character code point
+;;   ([<base-key-type> [<shifted-key-type>]] [<key-spec-plist>])
 
-(defun vkbd-key-data-key-types (key-data)
+;; <key-spec-plist> : ( <key-spec-property>... )
+;; <key-spec-property> :
+;;   :w <key-width-ratio>
+;;   :width <key-width-ratio>
+
+(defun vkbd-key-spec-key-types (key-spec)
   "Return ([<no-mod-key-type> [<shifted-key-type>]])."
   (cond
-   ((null key-data)
+   ((null key-spec)
     nil)
-   ((consp key-data)
-    (cl-loop for x in key-data until (keywordp x) collect x))
-   ((or (integerp key-data) (symbolp key-data))
-    (list key-data))))
-;; TEST: (vkbd-key-data-key-types nil) => nil
-;; TEST: (vkbd-key-data-key-types ?a) => (97)
-;; TEST: (vkbd-key-data-key-types '(?a)) => (97)
-;; TEST: (vkbd-key-data-key-types '(:w 1.5)) => nil
-;; TEST: (vkbd-key-data-key-types '(nil :w 1.5)) => (nil)
-;; TEST: (vkbd-key-data-key-types '(nil ?a :w 1.5)) => (nil 97)
-;; TEST: (vkbd-key-data-key-types '(esc :w 1.5)) => (esc)
+   ((consp key-spec)
+    (cl-loop for x in key-spec until (keywordp x) collect x))
+   ((or (integerp key-spec) (symbolp key-spec))
+    (list key-spec))))
+;; TEST: (vkbd-key-spec-key-types nil) => nil
+;; TEST: (vkbd-key-spec-key-types ?a) => (97)
+;; TEST: (vkbd-key-spec-key-types '(?a)) => (97)
+;; TEST: (vkbd-key-spec-key-types '(:w 1.5)) => nil
+;; TEST: (vkbd-key-spec-key-types '(nil :w 1.5)) => (nil)
+;; TEST: (vkbd-key-spec-key-types '(nil ?a :w 1.5)) => (nil 97)
+;; TEST: (vkbd-key-spec-key-types '(esc :w 1.5)) => (esc)
 
-(defun vkbd-key-data-base-key-type (key-data)
-  "Return base (unmodified) key type of KEY-DATA."
-  (car (vkbd-key-data-key-types key-data)))
+(defun vkbd-key-spec-base-key-type (key-spec)
+  "Return base (unmodified) key type of KEY-SPEC."
+  (car (vkbd-key-spec-key-types key-spec)))
 
-(defun vkbd-key-data-properties (key-data)
-  (when (consp key-data)
-    (cl-loop for x on key-data when (keywordp (car x)) return x)))
-;; TEST: (vkbd-key-data-properties nil) => nil
-;; TEST: (vkbd-key-data-properties ?a) => nil
-;; TEST: (vkbd-key-data-properties '(?a)) => nil
-;; TEST: (vkbd-key-data-properties '(:w 1.5)) => (:w 1.5)
-;; TEST: (vkbd-key-data-properties '(esc :w 1.5)) => (:w 1.5)
+(defun vkbd-key-spec-properties (key-spec)
+  (when (consp key-spec)
+    (cl-loop for x on key-spec when (keywordp (car x)) return x)))
+;; TEST: (vkbd-key-spec-properties nil) => nil
+;; TEST: (vkbd-key-spec-properties ?a) => nil
+;; TEST: (vkbd-key-spec-properties '(?a)) => nil
+;; TEST: (vkbd-key-spec-properties '(:w 1.5)) => (:w 1.5)
+;; TEST: (vkbd-key-spec-properties '(esc :w 1.5)) => (:w 1.5)
 
-(defun vkbd-key-data-to-key-type (key-data pressed-modifiers)
-  (let ((key-types (vkbd-key-data-key-types key-data)))
+(defun vkbd-key-spec-to-key-type (key-spec pressed-modifiers)
+  (let ((key-types (vkbd-key-spec-key-types key-spec)))
     (if (memq 'shift pressed-modifiers)
         (or (cadr key-types)
             (let ((kt (car key-types)))
@@ -989,27 +1004,27 @@ Return a cons cell (EVENTS . PRESSED-MODIFIERS) where:
                   (upcase kt) ;; TODO: Customize?
                 kt)))
       (car key-types))))
-;; TEST: (vkbd-key-data-to-key-type nil nil) => nil
-;; TEST: (vkbd-key-data-to-key-type nil '(shift control)) => nil
-;; TEST: (vkbd-key-data-to-key-type ?a nil) => 97
-;; TEST: (vkbd-key-data-to-key-type ?a '(shift)) => 65
-;; TEST: (vkbd-key-data-to-key-type ?a '(shift control)) => 65
-;; TEST: (vkbd-key-data-to-key-type 'esc '(shift control)) => esc
-;; TEST: (vkbd-key-data-to-key-type '(?a :w 2) '(shift control)) => 65
-;; TEST: (vkbd-key-data-to-key-type '(?2 ?\") '(shift control)) => 34
+;; TEST: (vkbd-key-spec-to-key-type nil nil) => nil
+;; TEST: (vkbd-key-spec-to-key-type nil '(shift control)) => nil
+;; TEST: (vkbd-key-spec-to-key-type ?a nil) => 97
+;; TEST: (vkbd-key-spec-to-key-type ?a '(shift)) => 65
+;; TEST: (vkbd-key-spec-to-key-type ?a '(shift control)) => 65
+;; TEST: (vkbd-key-spec-to-key-type 'esc '(shift control)) => esc
+;; TEST: (vkbd-key-spec-to-key-type '(?a :w 2) '(shift control)) => 65
+;; TEST: (vkbd-key-spec-to-key-type '(?2 ?\") '(shift control)) => 34
 
-(defun vkbd-key-data-width-ratio (key-data)
-  (let ((key-props (vkbd-key-data-properties key-data)))
+(defun vkbd-key-spec-width-ratio (key-spec)
+  (let ((key-props (vkbd-key-spec-properties key-spec)))
     (or (plist-get key-props :width)
         (plist-get key-props :w))))
 
 
 ;;;;; Key Object
 
-(defun vkbd-make-key-object (key-id key-data keyboard)
+(defun vkbd-make-key-object (key-id key-spec keyboard)
   "Create a key object and return it."
   (list 'vkbd-key-object
-        :id key-id :data key-data :keyboard keyboard :pressed nil))
+        :id key-id :spec key-spec :keyboard keyboard :pressed nil))
 
 (defmacro vkbd-key-object-plist (keyobj)
   "Return the property list of KEYOBJ."
@@ -1023,9 +1038,9 @@ Return a cons cell (EVENTS . PRESSED-MODIFIERS) where:
   "Return identifier of KEYOBJ."
   (vkbd-key-object-property keyobj :id))
 
-(defun vkbd-key-object-key-data (keyobj)
-  "Return key-data structure of KEYOBJ."
-  (vkbd-key-object-property keyobj :data))
+(defun vkbd-key-object-key-spec (keyobj)
+  "Return key-spec structure of KEYOBJ."
+  (vkbd-key-object-property keyobj :spec))
 
 (defun vkbd-key-object-keyboard (keyobj)
   "Return the keyboard object that contains KEYOBJ."
@@ -1043,8 +1058,8 @@ Return a cons cell (EVENTS . PRESSED-MODIFIERS) where:
 
 (defun vkbd-key-object-pressed-modifier-p (keyobj)
   "Return non-nil if KEYOBJ is a pressed modifier key."
-  (when-let* ((key-data (vkbd-key-object-key-data keyobj))
-              (key-type (vkbd-key-data-base-key-type key-data))
+  (when-let* ((key-spec (vkbd-key-object-key-spec keyobj))
+              (key-type (vkbd-key-spec-base-key-type key-spec))
               (modifier (vkbd-key-type-to-modifier key-type)))
     (and modifier
          (memq modifier
@@ -1053,8 +1068,8 @@ Return a cons cell (EVENTS . PRESSED-MODIFIERS) where:
 
 (defun vkbd-key-object-to-key-type (keyobj keyboard)
   "Convert KEYOBJ to a key-type in the current KEYBOARD state."
-  (vkbd-key-data-to-key-type
-   (vkbd-key-object-key-data keyobj)
+  (vkbd-key-spec-to-key-type
+   (vkbd-key-object-key-spec keyobj)
    (vkbd-keyboard-pressed-modifiers keyboard)))
 
 
@@ -1292,8 +1307,8 @@ lower it."
      (t
       (vkbd-get-face-opt options 'vkbd-text-key)))))
 
-(defun vkbd-key-data-key-types-for-display (key-data keyboard)
-  (let ((key-types (vkbd-key-data-key-types key-data)))
+(defun vkbd-key-spec-key-types-for-display (key-spec keyboard)
+  (let ((key-types (vkbd-key-spec-key-types key-spec)))
     (when (and key-types (not (equal key-types '(nil))))
       (if (vkbd-keyboard-shift-pressed-p keyboard)
           ;; The shift key is pressed
@@ -1309,12 +1324,12 @@ lower it."
         ;; The shift key is not pressed
         key-types))))
 
-(defun vkbd-text-key-data-string-for-display (key-data keyboard)
-  (when-let* ((key-types (vkbd-key-data-key-types-for-display key-data
+(defun vkbd-text-key-spec-string-for-display (key-spec keyboard)
+  (when-let* ((key-types (vkbd-key-spec-key-types-for-display key-spec
                                                               keyboard)))
     (let* ((options (vkbd-keyboard-options keyboard))
            (key-width (vkbd-text-key-width
-                       options (vkbd-key-data-width-ratio key-data)))
+                       options (vkbd-key-spec-width-ratio key-spec)))
            (num-types (length key-types))
            (width-per-type (max 1 (/ key-width num-types)))
            (raise-spec (or (plist-get options :text-key-raise)
@@ -1342,8 +1357,8 @@ lower it."
       (vkbd-text-key-centering text key-width))))
 
 (defun vkbd-text-key-string-visible (keyobj)
-  (when-let* ((text (vkbd-text-key-data-string-for-display
-                     (vkbd-key-object-key-data keyobj)
+  (when-let* ((text (vkbd-text-key-spec-string-for-display
+                     (vkbd-key-object-key-spec keyobj)
                      (vkbd-key-object-keyboard keyobj))))
     (vkbd-text-key-propertized
      text
@@ -1357,8 +1372,8 @@ lower it."
     (vkbd-text-key-propertized
      (vkbd-text-key-centering
       ""
-      (vkbd-text-key-width options (vkbd-key-data-width-ratio
-                                    (vkbd-key-object-key-data keyobj))))
+      (vkbd-text-key-width options (vkbd-key-spec-width-ratio
+                                    (vkbd-key-object-key-spec keyobj))))
      'face (vkbd-get-face-opt options 'vkbd-text-key-invisible)
      'pointer 'arrow)))
 
@@ -1367,8 +1382,8 @@ lower it."
   (or (vkbd-text-key-string-visible keyobj)
       (vkbd-text-key-string-invisible keyobj)))
 
-(defun vkbd-insert-text-key (keyboard key-data key-id)
-  (let* ((keyobj (vkbd-make-key-object key-id key-data keyboard))
+(defun vkbd-insert-text-key (keyboard key-spec key-id)
+  (let* ((keyobj (vkbd-make-key-object key-id key-spec keyboard))
          (text (vkbd-text-key-string keyobj)))
     (when (stringp text)
       (insert text))))
@@ -1412,8 +1427,8 @@ lower it."
         (key-id 0))
     (vkbd-map-keyboard-layout-keys
      (vkbd-default-keyboard-layout options)
-     (lambda (key-data)
-       (vkbd-insert-text-key keyboard key-data (cl-incf key-id)))
+     (lambda (key-spec)
+       (vkbd-insert-text-key keyboard key-spec (cl-incf key-id)))
      (lambda () ;; between columns
        (vkbd-insert-text-column-separator options))
      (lambda () ;; between rows
@@ -1569,6 +1584,14 @@ KEY-FUN must leave point at the end of the key."
 
 ;;;;; Keyboard Layouts
 
+;; <keyboard-layout> :
+;;   ( <keyboard-row> ... [ <keyboard-plist> ])
+;;
+;; <keyboard-row> :
+;;   ( <key-spec> ... )
+;;
+;; <keyboard-plist> : Currently undefined
+
 (defconst vkbd-layout-10x9
   '((esc ?~  ?^  ?`  ?_  ?|  ?\\ ?{  ?}  ?*)
     (tab ?:  ?<  ?=  ?>  ??  ?@  ?\[ ?\] ?+)
@@ -1691,8 +1714,8 @@ could occur if the layout specification (like
           (while cols
             (unless (eq cols curr-row)
               (funcall between-cols-fun))
-            (let ((key-data (car cols)))
-              (funcall key-fun key-data))
+            (let ((key-spec (car cols)))
+              (funcall key-fun key-spec))
             (setq cols (cdr cols))))
         (setq rows (cdr rows))))))
 
