@@ -33,6 +33,10 @@
 ;;   Global keyboard settings:
 ;;   - `vkbd-global-keyboard-options'
 
+;;   Frame Settings:
+;;   - `vkbd-keyboard-frame-parameters'
+;;   - `vkbd-recycle-frames'
+
 ;;   Default layout & style:
 ;;   - `vkbd-default-keyboard-layout'
 ;;   - `vkbd-default-keyboard-style' (Currently only text01 style)
@@ -44,6 +48,7 @@
 ;;     - `vkbd-text-column-separator-width'
 ;;     - `vkbd-text-column-separator-display'
 ;;     - `vkbd-text-row-separator-height'
+;;     - `vkbd-keyboard-buffer-line-spacing'
 ;;   - Faces:
 ;;     - `vkbd-text-keyboard'
 ;;     - `vkbd-text-key-common'
@@ -167,7 +172,9 @@ one."
     (vkbd-open-global-keyboard)))
 
 
-;;;; Keyboard
+;;;; Keyboards
+
+;;;;; Keyboard Objects
 
 ;; Basic keyboard functions:
 ;; - `vkbd-make-keyboard'
@@ -263,6 +270,7 @@ This function is for debugging purposes."
     (vkbd-update-keyboard-display keyboard)))
 
 (defun vkbd-update-keyboard-display (keyboard)
+  "Update the appearance of KEYBOARD to match its state."
   (vkbd-keyboard-style--update-keyboard keyboard))
 
 (defun vkbd-event-to-keyboard (event)
@@ -290,6 +298,18 @@ Return a list of events corresponding to KEY-TYPE."
 ;; - `vkbd-delete-frame'
 ;; - `vkbd-delete-all-unused-frames'
 ;; - `vkbd-frame-live-p'
+
+(defconst vkbd-unmodifiable-frame-parameters
+  '(border-width)
+  "List of frame parameters that cannot be modified after frame creation.
+Attempting to modify these parameters after creation causes errors.")
+
+(defun vkbd-remove-unmodifiable-frame-parameters (frame-parameters)
+  "Remove parameters from FRAME-PARAMETERS that cannot be modified after
+frame creation."
+  (seq-remove (lambda (param-value)
+                (memq (car param-value) vkbd-unmodifiable-frame-parameters))
+              frame-parameters))
 
 (defcustom vkbd-recycle-frames t
   "Non-nil means recycle frames instead of deleting them immediately.
@@ -396,15 +416,7 @@ The deleted frame will not be reused."
        (not (memq object vkbd-unused-frames))))
 
 
-;;;;; Keyboard Frame
-
-(defconst vkbd-unmodifiable-frame-parameters
-  '(border-width))
-
-(defun vkbd-remove-unmodifiable-frame-parameters (frame-parameters)
-  (seq-remove (lambda (param-value)
-                (memq (car param-value) vkbd-unmodifiable-frame-parameters))
-              frame-parameters))
+;;;;; Keyboard Frames
 
 (defcustom vkbd-keyboard-frame-parameters
   ;; See: (info "(elisp) Window Frame Parameters")
@@ -584,7 +596,7 @@ SIZE is a cons cell (WIDTH . HEIGHT) specifying the frame size in pixels."
     ))
 
 
-;;;;; Keyboard Buffer
+;;;;; Keyboard Buffers
 
 (defvar-keymap vkbd-keyboard-buffer-mode-map
   "<touchscreen-begin>" #'vkbd-move-keyboard-frame-on-mouse-down
@@ -660,6 +672,7 @@ This major mode is for internal use and is not intended for direct user use."
   (vkbd-global-setup))
 
 (defun vkbd-keyboard-buffer-p (object)
+  "Return non-nil if OBJECT is a buffer in `vkbd-keyboard-buffer-mode'."
   (and (bufferp object)
        (eq (buffer-local-value 'major-mode object)
            'vkbd-keyboard-buffer-mode)))
@@ -668,7 +681,7 @@ This major mode is for internal use and is not intended for direct user use."
   "Return the keyboard object associated with keyboard BUFFER."
   (buffer-local-value 'vkbd-keyboard-buffer-keyboard buffer))
 
-;; Frame dragging
+;;;;;; Frame dragging
 
 (defconst vkbd-frame-move-debounce-time 0.05
   "Debounce time (in seconds) after moving the frame.
@@ -711,7 +724,7 @@ last move.")
   (unless (vkbd-move-keyboard-frame-on-mouse-down down-event)
     (vkbd-delete-frame (window-frame (posn-window (event-start down-event))))))
 
-;;
+;;;;;; Buffer Events
 
 (defun vkbd-event-in-keyboard-buffer-p (event)
   "Return non-nil if EVENT occurred in a `vkbd-keyboard-buffer-mode' buffer."
@@ -947,6 +960,15 @@ Return a cons cell (EVENTS . PRESSED-MODIFIERS) where:
 ;; TEST: (vkbd-key-type-to-modifier 'ctl) => control
 ;; TEST: (vkbd-key-type-to-modifier 'esc) => nil
 
+(defun vkbd-key-type-to-display-string (key-type &optional _key-width)
+  (cond
+   ((null key-type) nil)
+   ((integerp key-type)
+    (char-to-string key-type))
+   ((symbolp key-type)
+    ;; TODO: Select a string that matches KEY-WIDTH ("Ctl" "Ctrl" "Control")
+    (plist-get (alist-get key-type vkbd-key-type-alist) :text))))
+
 
 ;;;;; Key Specs
 
@@ -966,27 +988,41 @@ Return a cons cell (EVENTS . PRESSED-MODIFIERS) where:
 ;;   :width <key-width-ratio>
 
 (defun vkbd-key-spec-key-types (key-spec)
-  "Return ([<no-mod-key-type> [<shifted-key-type>]])."
+  "Return the key-types contained in KEY-SPEC.
+Return nil or a list in the form ([<no-mod-key-type> [<shifted-key-type>]])."
   (cond
    ((null key-spec)
     nil)
    ((consp key-spec)
-    (cl-loop for x in key-spec until (keywordp x) collect x))
+    (cl-loop
+     with rtypes = nil ;;reversed
+     ;; Take until keyword.
+     for x in key-spec until (keywordp x) do (push x rtypes)
+     ;; Discard the trailing nil.
+     ;; (nil) => nil
+     ;; (<non-nil> nil) => (<non-nil>)
+     ;; (nil <non-nil>) => keep
+     finally return (nreverse (seq-drop-while #'null rtypes))))
    ((or (integerp key-spec) (symbolp key-spec))
     (list key-spec))))
-;; TEST: (vkbd-key-spec-key-types nil) => nil
 ;; TEST: (vkbd-key-spec-key-types ?a) => (97)
 ;; TEST: (vkbd-key-spec-key-types '(?a)) => (97)
+;; TEST: (vkbd-key-spec-key-types '(?a ?b)) => (97 98)
 ;; TEST: (vkbd-key-spec-key-types '(:w 1.5)) => nil
-;; TEST: (vkbd-key-spec-key-types '(nil :w 1.5)) => (nil)
+;; TEST: (vkbd-key-spec-key-types '(nil :w 1.5)) => nil
 ;; TEST: (vkbd-key-spec-key-types '(nil ?a :w 1.5)) => (nil 97)
 ;; TEST: (vkbd-key-spec-key-types '(esc :w 1.5)) => (esc)
+;; TEST: (vkbd-key-spec-key-types nil) => nil
+;; TEST: (vkbd-key-spec-key-types '(nil)) => nil
+;; TEST: (vkbd-key-spec-key-types '(?a nil)) => (97)
+;; TEST: (vkbd-key-spec-key-types '(?a nil :w 1.5)) => (97)
 
 (defun vkbd-key-spec-base-key-type (key-spec)
   "Return base (unmodified) key type of KEY-SPEC."
   (car (vkbd-key-spec-key-types key-spec)))
 
 (defun vkbd-key-spec-properties (key-spec)
+  "Return the property list contained in KEY-SPEC."
   (when (consp key-spec)
     (cl-loop for x on key-spec when (keywordp (car x)) return x)))
 ;; TEST: (vkbd-key-spec-properties nil) => nil
@@ -995,31 +1031,64 @@ Return a cons cell (EVENTS . PRESSED-MODIFIERS) where:
 ;; TEST: (vkbd-key-spec-properties '(:w 1.5)) => (:w 1.5)
 ;; TEST: (vkbd-key-spec-properties '(esc :w 1.5)) => (:w 1.5)
 
-(defun vkbd-key-spec-to-key-type (key-spec pressed-modifiers)
+(defun vkbd-key-spec-modified-key-type (key-spec pressed-modifiers)
+  "Return the key-type from KEY-SPEC with PRESSED-MODIFIERS applied.
+
+If shift is in PRESSED-MODIFIERS, return the shifted key-type if available,
+otherwise return the uppercase version of the base key-type for characters.
+If shift is not pressed, return the base key-type."
+  ;; (car (vkbd-key-spec-modified-key-types-for-display key-spec pressed-modifiers)) ?
   (let ((key-types (vkbd-key-spec-key-types key-spec)))
-    (if (memq 'shift pressed-modifiers)
-        (or (cadr key-types)
-            (let ((kt (car key-types)))
-              (if (integerp kt)
-                  (upcase kt) ;; TODO: Customize?
-                kt)))
-      (car key-types))))
-;; TEST: (vkbd-key-spec-to-key-type nil nil) => nil
-;; TEST: (vkbd-key-spec-to-key-type nil '(shift control)) => nil
-;; TEST: (vkbd-key-spec-to-key-type ?a nil) => 97
-;; TEST: (vkbd-key-spec-to-key-type ?a '(shift)) => 65
-;; TEST: (vkbd-key-spec-to-key-type ?a '(shift control)) => 65
-;; TEST: (vkbd-key-spec-to-key-type 'esc '(shift control)) => esc
-;; TEST: (vkbd-key-spec-to-key-type '(?a :w 2) '(shift control)) => 65
-;; TEST: (vkbd-key-spec-to-key-type '(?2 ?\") '(shift control)) => 34
+    (when key-types
+      (if (memq 'shift pressed-modifiers)
+          ;; with shift
+          (or
+           ;; 2nd key-type if valid
+           (cadr key-types)
+           ;; single key-type
+           (let ((kt (car key-types)))
+             (if (integerp kt)
+                 ;; character
+                 (upcase kt) ;; TODO: Customize?
+               ;; symbol (including nil)
+               kt)))
+        ;; without shift
+        (car key-types)))))
+;; TEST: (vkbd-key-spec-modified-key-type nil nil) => nil
+;; TEST: (vkbd-key-spec-modified-key-type nil '(shift control)) => nil
+;; TEST: (vkbd-key-spec-modified-key-type ?a nil) => 97
+;; TEST: (vkbd-key-spec-modified-key-type ?a '(shift)) => 65
+;; TEST: (vkbd-key-spec-modified-key-type ?a '(shift control)) => 65
+;; TEST: (vkbd-key-spec-modified-key-type 'esc '(shift control)) => esc
+;; TEST: (vkbd-key-spec-modified-key-type '(?a :w 2) '(shift control)) => 65
+;; TEST: (vkbd-key-spec-modified-key-type '(?2 ?\") '(shift control)) => 34
+
+(defun vkbd-key-spec-modified-key-types-for-display (key-spec pressed-modifiers)
+  (let ((key-types (vkbd-key-spec-key-types key-spec)))
+    (when key-types
+      (if (memq 'shift pressed-modifiers)
+          ;; with shift
+          (or
+           ;; 2nd key-type if valid
+           (cdr key-types)
+           ;; single key-type
+           (let ((kt (car key-types)))
+             (if (integerp kt)
+                 ;; character
+                 (list (upcase kt))
+               ;; symbol
+               key-types)))
+        ;; without shift
+        key-types))))
 
 (defun vkbd-key-spec-width-ratio (key-spec)
+  "Return the width ratio property of KEY-SPEC."
   (let ((key-props (vkbd-key-spec-properties key-spec)))
     (or (plist-get key-props :width)
         (plist-get key-props :w))))
 
 
-;;;;; Key Object
+;;;;; Key Objects
 
 (defun vkbd-make-key-object (key-id key-spec keyboard)
   "Create a key object and return it."
@@ -1068,7 +1137,7 @@ Return a cons cell (EVENTS . PRESSED-MODIFIERS) where:
 
 (defun vkbd-key-object-to-key-type (keyobj keyboard)
   "Convert KEYOBJ to a key-type in the current KEYBOARD state."
-  (vkbd-key-spec-to-key-type
+  (vkbd-key-spec-modified-key-type
    (vkbd-key-object-key-spec keyobj)
    (vkbd-keyboard-pressed-modifiers keyboard)))
 
@@ -1134,6 +1203,328 @@ Return a cons cell (EVENTS . PRESSED-MODIFIERS) where:
 
 
 ;;;;;; Text Keyboard Appearance
+;;;;;;; Insert Buffer Contents
+
+(defun vkbd-insert-text-keyboard (keyboard)
+  (vkbd-insert-text-keyboard-title keyboard)
+  (vkbd-insert-text-keyboard-keys keyboard))
+
+;;;;;;; Insert Title Bar
+
+(defun vkbd-insert-text-keyboard-title (keyboard)
+  (let ((options (vkbd-keyboard-options keyboard)))
+    (vkbd-insert-close-button options)
+    (let ((title (plist-get options :title)))
+      (when (stringp title)
+        (vkbd-insert-propertized
+         title 'face (vkbd-get-face-opt options 'vkbd-title-caption))))
+    (vkbd-insert-propertized
+     "\n" 'face (vkbd-get-face-opt options 'vkbd-title-bar))
+    (vkbd-insert-text-row-separator options)))
+
+(defun vkbd-on-close-button-click (event)
+  (interactive "e")
+  (vkbd-log "on-close-button-click")
+  (when-let* ((keyboard (vkbd-event-to-keyboard event)))
+    (vkbd-delete-keyboard keyboard)))
+
+(defconst vkbd-text-keyboard-close-button-caption "  x  ")
+
+(defun vkbd-insert-close-button (options)
+  (vkbd-insert-propertized
+   vkbd-text-keyboard-close-button-caption
+   'face (vkbd-get-face-opt options 'vkbd-close-button)
+   'pointer 'hand
+   'keymap
+   (let ((km (make-sparse-keymap)))
+     (define-key km [down-mouse-1] #'ignore)
+     (define-key km [mouse-1] #'vkbd-on-close-button-click)
+     (define-key km [touchscreen-begin] #'ignore)
+     (define-key km [touchscreen-update] #'ignore)
+     (define-key km [touchscreen-end] #'vkbd-on-close-button-click)
+     km))
+  (vkbd-insert-propertized " " 'keymap (make-sparse-keymap)))
+
+;;;;;;; Insert Keys
+
+(defun vkbd-insert-text-keyboard-keys (keyboard)
+  (let ((options (vkbd-keyboard-options keyboard))
+        (key-id 0))
+    (vkbd-map-keyboard-layout-keys
+     (vkbd-default-keyboard-layout options)
+     (lambda (key-spec)
+       (vkbd-insert-text-key keyboard key-spec (cl-incf key-id)))
+     (lambda () ;; between columns
+       (vkbd-insert-text-column-separator options))
+     (lambda () ;; between rows
+       (insert "\n")
+       (vkbd-insert-text-row-separator options)))))
+
+(defun vkbd-insert-text-key (keyboard key-spec key-id)
+  (let* ((keyobj (vkbd-make-key-object key-id key-spec keyboard))
+         (text (vkbd-text-key-string keyobj)))
+    (when (stringp text)
+      (insert text))))
+
+;;;;;;; Make Key String
+
+(defun vkbd-text-key-string (keyobj)
+  "Generate the display string for a key in text keyboard style."
+  (or (vkbd-text-key-string-visible keyobj)
+      (vkbd-text-key-string-invisible keyobj)))
+
+(defun vkbd-text-key-string-invisible (keyobj)
+  (let ((options (vkbd-keyboard-options (vkbd-key-object-keyboard keyobj))))
+    (vkbd-text-key-propertized
+     (vkbd-text-key-centering
+      ""
+      (vkbd-text-key-width options (vkbd-key-spec-width-ratio
+                                    (vkbd-key-object-key-spec keyobj))))
+     'face (vkbd-get-face-opt options 'vkbd-text-key-invisible)
+     'pointer 'arrow)))
+
+(defun vkbd-text-key-string-visible (keyobj)
+  (when-let* ((text (vkbd-text-key-spec-string-for-display
+                     (vkbd-key-object-key-spec keyobj)
+                     (vkbd-key-object-keyboard keyobj))))
+    (vkbd-text-key-propertized
+     text
+     'face (vkbd-text-key-obj-face keyobj)
+     'vkbd-key-object keyobj
+     'vkbd-key-id (vkbd-key-object-id keyobj)
+     'pointer 'hand)))
+
+(defun vkbd-text-key-spec-string-for-display (key-spec keyboard)
+  (when-let* ((key-types (vkbd-key-spec-modified-key-types-for-display
+                          key-spec
+                          (vkbd-keyboard-pressed-modifiers keyboard))))
+    (let* ((options (vkbd-keyboard-options keyboard))
+           (key-width (vkbd-text-key-width
+                       options (vkbd-key-spec-width-ratio key-spec))))
+      ;; key-types => type-strs => concat => centering
+      (vkbd-text-key-centering
+       (vkbd-text-key-concat-key-type-strings
+        (vkbd-text-key-stringize-key-types
+         key-types
+         key-width options)
+        key-width)
+       key-width))))
+
+(defcustom vkbd-text-key-width 5
+  "Width of one key (number of characters)."
+  :type 'integer
+  :group 'vkbd-text-style)
+
+(defun vkbd-text-key-width (options &optional key-width-ratio)
+  "Return the width (number of characters) of one key."
+  (round
+   (* (or (plist-get options :text-key-width)
+          vkbd-text-key-width)
+      (or key-width-ratio 1.0))))
+
+(defcustom vkbd-text-key-raise '((0.0) (0.0 0.5))
+  "Vertical position of characters when displaying multiple characters per key.
+
+Format:
+  ((raise-without-shift) (raise-with-shift-char1 raise-with-shift-char2))
+
+Each value is a multiple of the text height used for the `raise' display
+property. Positive values raise text above the baseline; negative values
+lower it."
+  :type '(list :tag "By condition"
+               (list :tag "Without shift"
+                     (float :tag "Raise factor"))
+               (list :tag "With shift"
+                     (float :tag "First character raise factor")
+                     (float :tag "Second character raise factor")))
+  :group 'vkbd-text-style)
+
+(defun vkbd-text-key-stringize-key-types (key-types key-width options)
+  (let* ((num-types (length key-types))
+         (width-per-type (max 1 (/ key-width num-types)))
+         (raise-spec (or (plist-get options :text-key-raise)
+                         vkbd-text-key-raise)))
+    (cl-loop
+     for type in key-types
+     for type-index from 0
+     for raise-factor = (nth type-index (nth (1- num-types) raise-spec))
+     for str = (or (vkbd-key-type-to-display-string type width-per-type)
+                   " ")
+     collect (if raise-factor
+                 (propertize str 'display (list 'raise raise-factor))
+               str))))
+
+(defun vkbd-text-key-concat-key-type-strings (type-strs key-width)
+  (when type-strs
+    (let ((type-strs-total-width (apply #'+ (mapcar #'string-width type-strs))))
+      (mapconcat
+       #'identity type-strs
+       ;; Add separators only if there is enough KEY-WIDTH
+       ;; [ab] [ab ] [ ab ] [ a b ] [ a b  ] [  a b  ]
+       (if (>= (- (- key-width 2) type-strs-total-width)
+               (1- (length type-strs)))
+           " "
+         nil)))))
+;; TEST: (vkbd-text-key-concat-key-type-strings '("," "<") 5) => ", <"
+
+(defun vkbd-text-key-centering (text key-width)
+  ;; TODO: Use display property (space :width 0.x)
+  (let ((text-width (string-width text)))
+    (when (< text-width key-width)
+      (let* ((short-width (- key-width text-width))
+             (left-width (/ short-width 2))
+             (right-width (- short-width left-width)))
+        (setq text (concat (make-string left-width ?\s)
+                           text
+                           (make-string right-width ?\s)))))
+    (truncate-string-to-width text key-width)))
+
+(defun vkbd-text-key-obj-face (keyobj)
+  (let ((options (vkbd-keyboard-options (vkbd-key-object-keyboard keyobj))))
+    (cond
+     ((or (vkbd-key-object-pressed keyobj)
+          (vkbd-key-object-pressed-modifier-p keyobj))
+      (vkbd-get-face-opt options 'vkbd-text-key-pressed))
+     ;; ((vkbd-key-object-locked keyobj)
+     ;;  (vkbd-get-face-opt options 'vkbd-text-key-locked))
+     (t
+      (vkbd-get-face-opt options 'vkbd-text-key)))))
+
+;;;;;;; Inert Column Separator
+
+(defcustom vkbd-text-column-separator-width 0.25
+  "Width of spacing between columns (horizontal spacing between keys)."
+  :type 'float
+  :group 'vkbd-text-style)
+
+(defconst vkbd-text-column-separator-display 'space) ;; or "|"
+
+(defun vkbd-insert-text-column-separator (options)
+  (let ((width (or (plist-get options :text-column-separator-width)
+                   vkbd-text-column-separator-width)))
+    (when (and (numberp width) (> width 0))
+      (vkbd-insert-propertized
+       " "
+       'display
+       (if (stringp vkbd-text-column-separator-display)
+           vkbd-text-column-separator-display
+         `(space :width ,width))
+       'face (vkbd-get-face-opt options 'vkbd-text-column-separator)))))
+
+;;;;;;; Insert Row Separator
+
+(defcustom vkbd-text-row-separator-height 0.1
+  "Height of spacing between rows (vertical spacing between keys)."
+  :type 'float
+  :group 'vkbd-text-style)
+
+(defun vkbd-insert-text-row-separator (options)
+  (when (display-graphic-p)
+    (let ((height (or (plist-get options :text-row-separator-height)
+                      vkbd-text-row-separator-height)))
+      (when (and (numberp height) (> height 0))
+        (vkbd-insert-propertized
+         "\n" 'face `(:inherit vkbd-text-row-separator
+                               :height ,height
+                               ))))))
+
+;;;;;;; Update Keys
+
+(defun vkbd-text-key-bounds-by-id (key-id)
+  "Return the region (START . END) of the text key with KEY-ID or nil."
+  (when-let* ((data (text-property-search-forward 'vkbd-key-id key-id #'eq)))
+    (cons (prop-match-beginning data) (prop-match-end data))))
+
+(defun vkbd-update-text-key-face (keyobj)
+  "Update the face of the text key represented by KEYOBJ.
+The face is set to `vkbd-text-key-pressed' if the key is pressed,
+otherwise `vkbd-text-key'."
+  (with-current-buffer (vkbd-keyboard-buffer (vkbd-key-object-keyboard keyobj))
+    (save-excursion
+      (goto-char (point-min))
+      (when-let* ((bounds
+                   (vkbd-text-key-bounds-by-id (vkbd-key-object-id keyobj))))
+        (let ((face (vkbd-text-key-obj-face keyobj)))
+          (vkbd-log "Update Key Display: bounds=%s face=%s key-id=%s"
+                    bounds face (vkbd-key-object-id keyobj))
+          (let ((inhibit-read-only t))
+            (put-text-property (car bounds) (cdr bounds)
+                               'face face)
+            (put-text-property (car bounds) (cdr bounds)
+                               'font-lock-face face)))))))
+
+(defun vkbd-update-text-key (keyobj)
+  "Update the display of KEYOBJ in text style."
+  ;; TODO: Update text?
+  (vkbd-update-text-key-face keyobj))
+
+(defun vkbd-search-text-key (&optional limit)
+  "Search for a key at or after point in the current buffer.
+Return nil if no key is found.
+If found, move point to the end of the key (just after the key text)
+and return (KEYOBJ START) where START is the beginning of the key text."
+  (let* ((start (point))
+         (keyobj
+          (or (get-text-property start 'vkbd-key-object)
+              (and (setq start
+                         (next-single-property-change start 'vkbd-key-object
+                                                      nil limit))
+                   (get-text-property start 'vkbd-key-object)))))
+    (when (and keyobj (or (null limit) (< start limit)))
+      (let ((end (or (next-single-property-change start 'vkbd-key-object
+                                                  nil limit)
+                     (point-max))))
+        (goto-char end)
+        (list keyobj start)))))
+
+(defun vkbd-scan-text-keys (key-fun &optional limit)
+  "Search all text-style keys in the current buffer and call KEY-FUN for each.
+
+KEY-FUN is called with arguments (KEYOBJ START) where:
+
+  - START points to the beginning of the key
+  - (point) points to the end of the key (the next character)
+
+KEY-FUN must leave point at the end of the key."
+  (save-excursion
+    (goto-char (point-min))
+    (let (args-keyobj-start)
+      (while (setq args-keyobj-start (vkbd-search-text-key limit))
+        ;; KEY-FUN is called with (KEYOBJ START)
+        ;; END = (point)
+        ;; KEY-FUN must leave point at the end of the key.
+        (apply key-fun args-keyobj-start)))))
+
+(defun vkbd-update-text-keyboard (keyboard)
+  "Update the display of KEYBOARD in text style."
+  (with-current-buffer (vkbd-keyboard-buffer keyboard)
+    (let ((inhibit-read-only t))
+      (vkbd-scan-text-keys
+       (lambda (keyobj start)
+         (delete-region start (point))
+         ;; Preserve the existing KEYOBJ (don't recreate it).
+         (insert (vkbd-text-key-string keyobj)))))))
+
+;;;;;;; Erase Buffer Contents
+
+(defun vkbd-erase-text-keyboard (keyboard)
+  "Completely erase the display of KEYBOARD in text style."
+  (with-current-buffer (vkbd-keyboard-buffer keyboard)
+    (let ((inhibit-read-only t))
+      (delete-region (point-min) (point-max))
+      (goto-char (point-min)))))
+
+;;;;;;; Rebuild Buffer Contents
+
+(defun vkbd-rebuild-text-keyboard (keyboard)
+  "Rebuild the display of KEYBOARD in text style."
+  (with-current-buffer (vkbd-keyboard-buffer keyboard)
+    (let ((inhibit-read-only t))
+      (delete-region (point-min) (point-max))
+      (goto-char (point-min))
+      (vkbd-insert-text-keyboard keyboard))))
+
+;;;;;;; Faces
 
 (defface vkbd-text-keyboard
   '((t (:inherit
@@ -1246,326 +1637,7 @@ Changing the height of this face also changes the height of keys."
 (defun vkbd-insert-propertized (string &rest properties)
   (insert (apply #'vkbd-text-key-propertized string properties)))
 
-(defcustom vkbd-text-key-width 5
-  "Width of one key (number of characters)."
-  :type 'integer
-  :group 'vkbd-text-style)
-
-(defun vkbd-text-key-width (options &optional key-width-ratio)
-  "Return the width (number of characters) of one key."
-  (round
-   (* (or (plist-get options :text-key-width)
-          vkbd-text-key-width)
-      (or key-width-ratio 1.0))))
-
-(defun vkbd-text-key-centering (text key-width)
-  ;; TODO: Use display property (space :width 0.x)
-  (let ((text-width (string-width text)))
-    (when (< text-width key-width)
-      (let* ((short-width (- key-width text-width))
-             (left-width (/ short-width 2))
-             (right-width (- short-width left-width)))
-        (setq text (concat (make-string left-width ?\s)
-                           text
-                           (make-string right-width ?\s)))))
-    (truncate-string-to-width text key-width)))
-
-(defun vkbd-key-type-string (_options key-type &optional _key-width)
-  (cond
-   ((null key-type) nil)
-   ((integerp key-type)
-    (char-to-string key-type))
-   ((symbolp key-type)
-    ;; TODO: Select a string that matches KEY-WIDTH ("Ctl" "Ctrl" "Control")
-    (plist-get (alist-get key-type vkbd-key-type-alist) :text))))
-
-(defcustom vkbd-text-key-raise '((0.0) (0.0 0.5))
-  "Vertical position of characters when displaying multiple characters per key.
-
-Format:
-  ((raise-without-shift) (raise-with-shift-char1 raise-with-shift-char2))
-
-Each value is a multiple of the text height used for the `raise' display
-property. Positive values raise text above the baseline; negative values
-lower it."
-  :type '(list :tag "By condition"
-               (list :tag "Without shift"
-                     (float :tag "Raise factor"))
-               (list :tag "With shift"
-                     (float :tag "First character raise factor")
-                     (float :tag "Second character raise factor")))
-  :group 'vkbd-text-style)
-
-(defun vkbd-text-key-face (keyobj)
-  (let ((options (vkbd-keyboard-options (vkbd-key-object-keyboard keyobj))))
-    (cond
-     ((or (vkbd-key-object-pressed keyobj)
-          (vkbd-key-object-pressed-modifier-p keyobj))
-      (vkbd-get-face-opt options 'vkbd-text-key-pressed))
-     ;; ((vkbd-key-object-locked keyobj)
-     ;;  (vkbd-get-face-opt options 'vkbd-text-key-locked))
-     (t
-      (vkbd-get-face-opt options 'vkbd-text-key)))))
-
-(defun vkbd-key-spec-key-types-for-display (key-spec keyboard)
-  (let ((key-types (vkbd-key-spec-key-types key-spec)))
-    (when (and key-types (not (equal key-types '(nil))))
-      (if (vkbd-keyboard-shift-pressed-p keyboard)
-          ;; The shift key is pressed
-          (or
-           ;; 2nd key-type
-           (cdr key-types)
-           ;; single key-types
-           (if (integerp (car key-types))
-               ;; alphabetical key
-               (list (upcase (car key-types)))
-             ;; symbol (including nil)
-             key-types))
-        ;; The shift key is not pressed
-        key-types))))
-
-(defun vkbd-text-key-spec-string-for-display (key-spec keyboard)
-  (when-let* ((key-types (vkbd-key-spec-key-types-for-display key-spec
-                                                              keyboard)))
-    (let* ((options (vkbd-keyboard-options keyboard))
-           (key-width (vkbd-text-key-width
-                       options (vkbd-key-spec-width-ratio key-spec)))
-           (num-types (length key-types))
-           (width-per-type (max 1 (/ key-width num-types)))
-           (raise-spec (or (plist-get options :text-key-raise)
-                           vkbd-text-key-raise))
-           (type-strs
-            (cl-loop
-             for type in key-types
-             for type-index from 0
-             for raise-factor = (nth type-index (nth (1- num-types) raise-spec))
-             for str = (or (vkbd-key-type-string options type width-per-type)
-                           " ")
-             collect (if raise-factor
-                         (propertize str 'display (list 'raise raise-factor))
-                       str)))
-           (type-strs-total-width (apply #'+ (mapcar #'string-width type-strs)))
-           (text
-            (when type-strs
-              (mapconcat
-               #'identity type-strs
-               ;; Add separators only if there is enough whitespace
-               ;; [ab] [ab ] [ ab ] [ a b ] [ a b  ] [  a b  ]
-               (if (>= (- (- key-width 2) type-strs-total-width) (1- num-types))
-                   " "
-                 nil)))))
-      (vkbd-text-key-centering text key-width))))
-
-(defun vkbd-text-key-string-visible (keyobj)
-  (when-let* ((text (vkbd-text-key-spec-string-for-display
-                     (vkbd-key-object-key-spec keyobj)
-                     (vkbd-key-object-keyboard keyobj))))
-    (vkbd-text-key-propertized
-     text
-     'face (vkbd-text-key-face keyobj)
-     'vkbd-key-object keyobj
-     'vkbd-key-id (vkbd-key-object-id keyobj)
-     'pointer 'hand)))
-
-(defun vkbd-text-key-string-invisible (keyobj)
-  (let ((options (vkbd-keyboard-options (vkbd-key-object-keyboard keyobj))))
-    (vkbd-text-key-propertized
-     (vkbd-text-key-centering
-      ""
-      (vkbd-text-key-width options (vkbd-key-spec-width-ratio
-                                    (vkbd-key-object-key-spec keyobj))))
-     'face (vkbd-get-face-opt options 'vkbd-text-key-invisible)
-     'pointer 'arrow)))
-
-(defun vkbd-text-key-string (keyobj)
-  "Generate the display string for a key in text keyboard style."
-  (or (vkbd-text-key-string-visible keyobj)
-      (vkbd-text-key-string-invisible keyobj)))
-
-(defun vkbd-insert-text-key (keyboard key-spec key-id)
-  (let* ((keyobj (vkbd-make-key-object key-id key-spec keyboard))
-         (text (vkbd-text-key-string keyobj)))
-    (when (stringp text)
-      (insert text))))
-
-(defcustom vkbd-text-column-separator-width 0.25
-  "Width of spacing between columns (horizontal spacing between keys)."
-  :type 'float
-  :group 'vkbd-text-style)
-
-(defconst vkbd-text-column-separator-display 'space) ;; or "|"
-
-(defun vkbd-insert-text-column-separator (options)
-  (let ((width (or (plist-get options :text-column-separator-width)
-                   vkbd-text-column-separator-width)))
-    (when (and (numberp width) (> width 0))
-      (vkbd-insert-propertized
-       " "
-       'display
-       (if (stringp vkbd-text-column-separator-display)
-           vkbd-text-column-separator-display
-         `(space :width ,width))
-       'face (vkbd-get-face-opt options 'vkbd-text-column-separator)))))
-
-(defcustom vkbd-text-row-separator-height 0.1
-  "Height of spacing between rows (vertical spacing between keys)."
-  :type 'float
-  :group 'vkbd-text-style)
-
-(defun vkbd-insert-text-row-separator (options)
-  (when (display-graphic-p)
-    (let ((height (or (plist-get options :text-row-separator-height)
-                      vkbd-text-row-separator-height)))
-      (when (and (numberp height) (> height 0))
-        (vkbd-insert-propertized
-         "\n" 'face `(:inherit vkbd-text-row-separator
-                               :height ,height
-                               ))))))
-
-(defun vkbd-insert-text-keyboard-keys (keyboard)
-  (let ((options (vkbd-keyboard-options keyboard))
-        (key-id 0))
-    (vkbd-map-keyboard-layout-keys
-     (vkbd-default-keyboard-layout options)
-     (lambda (key-spec)
-       (vkbd-insert-text-key keyboard key-spec (cl-incf key-id)))
-     (lambda () ;; between columns
-       (vkbd-insert-text-column-separator options))
-     (lambda () ;; between rows
-       (insert "\n")
-       (vkbd-insert-text-row-separator options)))))
-
-(defun vkbd-insert-text-keyboard-title (keyboard)
-  (let ((options (vkbd-keyboard-options keyboard)))
-    (vkbd-insert-close-button options)
-    (let ((title (plist-get options :title)))
-      (when (stringp title)
-        (vkbd-insert-propertized
-         title 'face (vkbd-get-face-opt options 'vkbd-title-caption))))
-    (vkbd-insert-propertized
-     "\n" 'face (vkbd-get-face-opt options 'vkbd-title-bar))
-    (vkbd-insert-text-row-separator options)))
-
-(defun vkbd-on-close-button-click (event)
-  (interactive "e")
-  (vkbd-log "on-close-button-click")
-  (when-let* ((keyboard (vkbd-event-to-keyboard event)))
-    (vkbd-delete-keyboard keyboard)))
-
-(defconst vkbd-text-keyboard-close-button-caption "  x  ")
-
-(defun vkbd-insert-close-button (options)
-  (vkbd-insert-propertized
-   vkbd-text-keyboard-close-button-caption
-   'face (vkbd-get-face-opt options 'vkbd-close-button)
-   'pointer 'hand
-   'keymap
-   (let ((km (make-sparse-keymap)))
-     (define-key km [down-mouse-1] #'ignore)
-     (define-key km [mouse-1] #'vkbd-on-close-button-click)
-     (define-key km [touchscreen-begin] #'ignore)
-     (define-key km [touchscreen-update] #'ignore)
-     (define-key km [touchscreen-end] #'vkbd-on-close-button-click)
-     km))
-  (vkbd-insert-propertized " " 'keymap (make-sparse-keymap)))
-
-(defun vkbd-insert-text-keyboard (keyboard)
-  (vkbd-insert-text-keyboard-title keyboard)
-  (vkbd-insert-text-keyboard-keys keyboard))
-
-;; Update
-
-(defun vkbd-text-key-bounds-by-id (key-id)
-  "Return the region (START . END) of the text key with KEY-ID or nil."
-  (when-let* ((data (text-property-search-forward 'vkbd-key-id key-id #'eq)))
-    (cons (prop-match-beginning data) (prop-match-end data))))
-
-(defun vkbd-update-text-key-face (keyobj)
-  "Update the face of the text key represented by KEYOBJ.
-The face is set to `vkbd-text-key-pressed' if the key is pressed,
-otherwise `vkbd-text-key'."
-  (with-current-buffer (vkbd-keyboard-buffer (vkbd-key-object-keyboard keyobj))
-    (save-excursion
-      (goto-char (point-min))
-      (when-let* ((bounds
-                   (vkbd-text-key-bounds-by-id (vkbd-key-object-id keyobj))))
-        (let ((face (vkbd-text-key-face keyobj)))
-          (vkbd-log "Update Key Display: bounds=%s face=%s key-id=%s"
-                    bounds face (vkbd-key-object-id keyobj))
-          (let ((inhibit-read-only t))
-            (put-text-property (car bounds) (cdr bounds)
-                               'face face)
-            (put-text-property (car bounds) (cdr bounds)
-                               'font-lock-face face)))))))
-
-(defun vkbd-update-text-key (keyobj)
-  "Update the display of KEYOBJ in text style."
-  ;; TODO: Update text?
-  (vkbd-update-text-key-face keyobj))
-
-(defun vkbd-search-text-key (&optional limit)
-  "Search for a key at or after point in the current buffer.
-Return nil if no key is found.
-If found, move point to the end of the key (just after the key text)
-and return (KEYOBJ START) where START is the beginning of the key text."
-  (let* ((start (point))
-         (keyobj
-          (or (get-text-property start 'vkbd-key-object)
-              (and (setq start
-                         (next-single-property-change start 'vkbd-key-object
-                                                      nil limit))
-                   (get-text-property start 'vkbd-key-object)))))
-    (when (and keyobj (or (null limit) (< start limit)))
-      (let ((end (or (next-single-property-change start 'vkbd-key-object
-                                                  nil limit)
-                     (point-max))))
-        (goto-char end)
-        (list keyobj start)))))
-
-(defun vkbd-scan-text-keys (key-fun &optional limit)
-  "Search all text-style keys in the current buffer and call KEY-FUN for each.
-
-KEY-FUN is called with arguments (KEYOBJ START) where:
-
-  - START points to the beginning of the key
-  - (point) points to the end of the key (the next character)
-
-KEY-FUN must leave point at the end of the key."
-  (save-excursion
-    (goto-char (point-min))
-    (let (args-keyobj-start)
-      (while (setq args-keyobj-start (vkbd-search-text-key limit))
-        ;; KEY-FUN is called with (KEYOBJ START)
-        ;; END = (point)
-        ;; KEY-FUN must leave point at the end of the key.
-        (apply key-fun args-keyobj-start)))))
-
-(defun vkbd-update-text-keyboard (keyboard)
-  "Update the display of KEYBOARD in text style."
-  (with-current-buffer (vkbd-keyboard-buffer keyboard)
-    (let ((inhibit-read-only t))
-      (vkbd-scan-text-keys
-       (lambda (keyobj start)
-         (delete-region start (point))
-         ;; Preserve the existing KEYOBJ (don't recreate it).
-         (insert (vkbd-text-key-string keyobj)))))))
-
-(defun vkbd-rebuild-text-keyboard (keyboard)
-  "Rebuild the display of KEYBOARD in text style."
-  (with-current-buffer (vkbd-keyboard-buffer keyboard)
-    (let ((inhibit-read-only t))
-      (delete-region (point-min) (point-max))
-      (goto-char (point-min))
-      (vkbd-insert-text-keyboard keyboard))))
-
-(defun vkbd-erase-text-keyboard (keyboard)
-  "Completely erase the display of KEYBOARD in text style."
-  (with-current-buffer (vkbd-keyboard-buffer keyboard)
-    (let ((inhibit-read-only t))
-      (delete-region (point-min) (point-max))
-      (goto-char (point-min)))))
-
-;;;;; Text01 Style
+;;;;;; Style Definition
 
 (defconst vkbd-text01-style
   (list 'vkbd-text01-style
@@ -1574,13 +1646,6 @@ KEY-FUN must leave point at the end of the key."
         :update-keyboard #'vkbd-update-text-keyboard
         :update-key #'vkbd-update-text-key
         :translate-event #'vkbd-text-keyboard-translate-event))
-
-
-;;;;; Text02 Style
-;; TODO: Impl Text02 Style
-
-;;;;; SVG01 Style
-;; TODO: Impl SVG01 Style
 
 ;;;;; Keyboard Layouts
 
@@ -1722,8 +1787,9 @@ could occur if the layout specification (like
 
 ;;;;; Keyboard Styles
 
-;; Style Definition:
+;; Style Definition :
 ;; (defconst <style-name>
+;;   ;; <keyboard-style> :
 ;;   '(<style-name>
 ;;     :insert-keyboard <function (keyboard):void>
 ;;     :update-keyboard <function (keyboard):void>
