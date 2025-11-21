@@ -738,7 +738,7 @@ This major mode is for internal use and is not intended for direct user use."
 
 ;;;;;; Frame dragging
 
-(defconst vkbd-frame-move-debounce-time 0.05
+(defconst vkbd-frame-move-debounce-time 0.07
   "Debounce time (in seconds) after moving the frame.
 Touch event coordinates immediately after moving a frame are unreliable,
 so events are ignored until this many seconds have elapsed since the
