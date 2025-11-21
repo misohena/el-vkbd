@@ -840,7 +840,8 @@ last move.")
                   (vkbd-set-keyboard-frame-position
                    down-frame
                    (cons (+ (car down-frame-xy) dx)
-                         (+ (cdr down-frame-xy) dy)))))))))
+                         (+ (cdr down-frame-xy) dy)))
+                  (setq last-frame-moved-time (float-time))))))))
     (vkbd-track-drag down-event on-move :on-up on-move
                      :allow-out-of-target-p t)
     moved))
