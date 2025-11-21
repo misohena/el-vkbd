@@ -84,6 +84,7 @@ Global keyboard settings:
 Frame settings:
 - `vkbd-keyboard-frame-parameters' : Frame parameters (note that changes may not be immediately reflected due to frame reuse)
 - `vkbd-recycle-frames' : Whether to pool and reuse frames (you can delete all pooled frames with M-x vkbd-delete-all-unused-frames)
+- `vkbd-keyboard-frame-keep-visible-margins' : Margins to keep visible when dragging the virtual keyboard frame
 
 Default layout & style:
 - `vkbd-default-keyboard-layout' : Default layout

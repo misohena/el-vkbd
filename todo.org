@@ -3,8 +3,20 @@
 #+AUTHOR: AKIYAMA Kouhei
 
 * Inbox
+** TODO 既存のIMEと併用することを前提としたコンパクトレイアウトを追加する
+BS、RET、SPCは要らない！
+といってもアルファベットを入れるならあまり小さくならないなぁ。
+まぁ、ATOKでもモードを変えればアルファベットを入力できるわけだし、どうやっても入力できない文字に限定したレイアウトがあれば良いかも。
+
+*修飾キーとの兼ね合いを考える必要がある。* 現状では、C-を押した後IMEのアルファベットを押してもそれにC-は適応されない。これを実現するにはC-が押されて解放された後にさらに次のキー入力までread-eventで待つ必要がある(modifier-bar-modeはこれをやっている)。
+
+** TODO フレームの位置を記憶する
+(locate-user-emacs-file "vkbd") "~/.emacs.d/vkbd"
+
+** TODO 余計なフレームサイズ変更を無くす
 ** TODO キーの幅に任意の数のcolumn-separatorの幅を追加できるようにする
 配列を整えるのに必要。
+
 ** TODO key-idは要らない。
 keyboardが全てのキーを保持していれば、オブジェクトのeqで判別できる。
 とは言え、それが本当に良いのだろうか。
@@ -16,24 +28,54 @@ Hacker's KeyboardのようにFnキーを押したらレイアウト毎全部書�
 ** TODO Shift+シフトありキーを押したときにshiftで修飾しない
 例えば一つのキーに(?a del)を割り当てたときに、Shiftとこのキーを押すとS-<delete>を押したことになってしまう。S-<delete>の入力は諦めて<delete>だけが入力されるべき。普通の記号でも同じ問題は起きないのだろうか。
 
-** TODO フレームの位置を記憶する
 ** TODO 長押しでキーリピートする
+** TODO 使用できないシチュエーションについて調べる
+[[https://www.gnu.org/software/emacs/manual/html_node/elisp/Reading-Input.html][Reading Input (GNU Emacs Lisp Reference Manual)]]
+- read-key-sequenceは機能しているっぽい。
+- read-eventには効かない。
+- read-char、read-char-exclusiveは正しく機能しない。
+- read-key、read-char-choiceは機能する。
+- read-multiple-choiceは正しく機能しない。
+- read-quoted-charは正しく機能しない。
+他にも:
+- transient.elは正しく機能しない。一時マップという手法(set-transient-mapと同じようにoverriding-terminal-local-map等を一時的に書き替えるのであれば、今のバッファで発生するイベントにしか効果が無いのは当たり前)
+- set-transient-mapも当然効かない。
+
 ** TODO フレームの入力フォーカスを制御する
 - できるだけキーにフォーカスして、フォーカスが外れたら閉じるモード
 - できるだけ親フレームにフォーカスするモード
 - touchscreen-updateやendでフォーカスが戻ってしまっている？
+
 ** TODO SVGキーボードスタイルを追加する
 ** TODO Emacsのオンスクリーンキーボードとして使えるようにする
 ** TODO vkbd-tool-bar-modeを作る?
 ** TODO 任意のバッファ内に直接キーボードを生成できるようにする
 バッファローカルキーボードを作りたい。SVG画像じゃないと実用的じゃないと思う。これをやるならキーボードの状態はバッファに持たせない方が良い。一つのバッファに複数のキーボードを配置する可能性があるので。
+
 ** TODO ポイント(カーソル)の位置を自動的に避けてくれるモード
 ** TODO 自動的に小さくなったり大きくなってくれたりするモード
 ** TODO フレームサイズをドラッグで変えられるようにする
+** TODO フレームのドラッグ移動後にフォーカスを外すべき？
 ** TODO (子フレームではなく)独立フレームで使えるようにする
+** TODO (フレームではなく)ウィンドウで表示できるようにする
+正直分割ウィンドウの下半分もしくは上半分に表示してくれた方が使いやすいのでは？
+また、フォーカススイッチによって生じる問題も低減できるはず。
+
 ** TODO フレームを閉じたときにバッファも消えるようにする
+たまたまフォーカスが当たっているときにC-x 5 0で閉じるとバッファが残る。
+
+** TODO タッチ操作でレイアウトを変更できるようにしたい
+
+** TODO メニューボタンを配置する？
+メニュー項目:
+- レイアウト切り替え
 ** TODO サイズをoptionsで変更できるようにしたい
 今はvkbd-text-keyboardを変更しなければならない。
+
+** TODO フレームパラメータalphaを指定してみる(半透明にする)
+狭い画面で使うので後ろが見えた方が良い。
+うーん、Windowsでは効くけどAndroidでは効かないみたい。
+それならいいや。そのうち対応したら。
 
 ** TODO タイトルバーにヘッダーラインを使う
 [[https://ayatakesi.github.io/lispref/29.1/html/Child-Frames.html][Child Frames (GNU Emacs Lisp Reference Manual)]]にも書いてあるとおりheader-lineをタイトルバー代わりに使える。
@@ -47,13 +89,17 @@ Hacker's KeyboardのようにFnキーを押したらレイアウト毎全部書�
 しかしAndroidでタッチによる移動は出来なかった。
 実装されていない？　それじゃ意味が無いので元に戻した。
 
-** TODO キーボードバッファでの入力を何とかする
+** TODO キーボードバッファでの入力イベントを抑制する
 キーボードバッファにフォーカスを持たせて何か入力したときにエラーが発生して鬱陶しいので。
+
+** TODO ハーボードバッファでスクロール出来てしまうのを抑制する
 * Finished
 ** DONE 子フレームにキーボードを表示する
 CLOSED: [2025-11-15 Sat 00:31]
+
 ** DONE キーマップ変換の仕組みを理解する
 CLOSED: [2025-11-16 Sun 12:38]
+
 *** マニュアルや既存ソースコードの例
 [[https://www.gnu.org/software/emacs/manual/html_node/elisp/Translation-Keymaps.html][Translation Keymaps (GNU Emacs Lisp Reference Manual)]]に説明がある。そこにはlocal-function-key-mapを使用してC-c hで後続のイベントにH-を付加する例がある。
 
@@ -225,20 +271,16 @@ my-test-create-input-buttonを評価するとabを入力するボタンがバッ
 子フレームであれば親フレームに戻してしまえば良い。
 
 *** 結論
-
 - フィルタ関数は自分の処理すべきイベントが来たときに、unread-command-eventsにキーを追加して[]を返すべし。そうでなければnilを返せば良い。
 - 子フレームを選択させたくなければselect-frameやselect-frame-set-input-focusを使って無理矢理親フレームを選択してしまえば良い。
-
 ** DONE Emacsの(マウス・タッチ)イベントからキーを入力する仕組みを作る
 CLOSED: [2025-11-16 Sun 12:43]
-
 ** DONE 子フレームをドラッグで移動できるようにする
 CLOSED: [2025-11-16 Sun 17:53]
 ** DONE 子フレームを閉じるボタンを追加する
 CLOSED: [2025-11-16 Sun 17:53]
 ** DONE Androidでのドラッグ移動がカクつくのを直す
 CLOSED: [2025-11-16 Sun 23:51]
-
 タッチイベント時にタッチでフレームを移動すると、フレームが振動して発散しウィンドウ範囲外に飛び出して見えなくなってしまうことがある。
 フレーム移動直後におかしな座標を持つtouchscreen-updateイベントが発生することが原因。
 touchscreen-updateイベントは指を動かさなくてもフレームを移動しただけで発生する。
@@ -248,32 +290,41 @@ touchscreen-updateイベントは指を動かさなくてもフレームを移�
 
 ** DONE シフトキーで入力する文字を表示できるようにする
 CLOSED: [2025-11-16 Sun 23:50]
+
 ** DONE レイアウトとスタイルを分離する
 CLOSED: [2025-11-16 Sun 23:49]
+
 ** DONE キーを半分ずらせるようにする
 CLOSED: [2025-11-16 Sun 23:50]
 
 ** DONE JPキーボードレイアウトを追加する
 CLOSED: [2025-11-16 Sun 23:49]
+
 ** DONE USキーボードレイアウトを追加する
 CLOSED: [2025-11-16 Sun 23:49]
+
 ** DONE シフトキー併用で記号を入力できるようにする
 CLOSED: [2025-11-17 Mon 11:35]
 キーを表すのにkey-typeではなくkey-dataという構造を使うようにする。
 key-dataは一つのキーを表し、key-typeは実際に入力されるものを表す。
+
 ** DONE よりコンパクトなレイアウトを追加する
 CLOSED: [2025-11-17 Mon 11:37]
 - vkbd-layout-10x7 : 記号の1文字入力にこだわらないレイアウト
 - vkbd-layout-10x6 : ほとんどの記号にShiftが必要、InsとDelを削除
+
 ** DONE グローバルキーボードのopen・closeコマンドを作る
 CLOSED: [2025-11-17 Mon 12:25]
 M-x vkbd-open-global-keyboardでキーボードを開き、M-x vkbd-close-global-keyboardで閉じるというだけのものがあれば便利。
+
 ** DONE ツールバーにグローバルキーボードトグルボタンを追加する
 CLOSED: [2025-11-17 Mon 16:32]
+
 ** DONE row-separatorをもう少し狭くする
 CLOSED: [2025-11-17 Mon 23:37]
 狭くならない原因はline-spacingだった。frame-parameterのline-spacingパラメータは無視されるみたい。私はデフォルト値(グローバル値)を4にしているから、それが使われて行間が大きくなっていた。
 vkbd-keyboard-buffer-line-spacing変数を追加。
+
 ** DONE シフト時キーがある場合のraise値をカスタマイズできるようにする
 CLOSED: [2025-11-18 Tue 11:33]
 line-spacingを小さくしたら下に寄りがちになってしまった。
@@ -282,6 +333,7 @@ line-spacingを小さくしたら下に寄りがちになってしまった。
 vkbd-text-key-raise変数を追加。
 
 ついでにvkbd-text-keyboard-key-data-string関数を全体的に修正する。
+
 ** DONE 11x7レイアウトを追加する
 CLOSED: [2025-11-18 Tue 13:43]
 Pixel7での私のフォント設定だと、あと1列分くらいは入る。
@@ -293,6 +345,7 @@ Pixel7での私のフォント設定だと、あと1列分くらいは入る。
 _もプログラミング言語によってはよく使うのでシフト無し。
 !#$%はUSでもJPでも数字キーの同じ場所にある。これらはそのままの並びで上の方に並べる。
 全体的に、右上のShiftの近くに寄せる。
+
 ** DONE 2ストロークキーが入力できない問題を修正する
 CLOSED: [2025-11-18 Tue 19:10]
 
@@ -357,6 +410,7 @@ C-cをキーボードから直接した後、マウスボタンを押し下げ�
     nil (閉じるボタンを押したりドラッグによるフレーム移動が出来るように)
 - キーボードバッファ外
   nil (他での利用を邪魔しない)
+
 ** DONE 10x7レイアウトを修正する
 CLOSED: [2025-11-18 Tue 20:48]
 (と)をシフト無しで押したい！
@@ -366,15 +420,19 @@ InsとEndは諦める。HomeとEndは左に移動して残す。
 ただし`'"の並びは特殊なのでそこは仕方ない。
 上矢印の左右に@と?を移動する。
 ^がシフトになってしまうのは諦める。
+
 ** DONE SPCは何も表示しない方が良いかもしれない
 CLOSED: [2025-11-18 Tue 22:04]
 やっぱり真っ白なことを判別して押しているみたいなので、文字があるとすぐに分からない。
+
 ** DONE アルファベット部分に記号をシフトで入れるのを止める
 CLOSED: [2025-11-19 Wed 18:20]
 当たり前だけどそれだと大文字が打てなくなる。なんてこった。全く気が付いていなかった！
 10x6レイアウトは削除する。維持不可能なので。
+
 ** DONE キー押し下げ中にキーの色を変更する
 CLOSED: [2025-11-19 Wed 19:18]
+
 ** DONE 修飾キー押し下げ状態時にキーの色を変更する
 CLOSED: [2025-11-20 Thu 11:22]
 普通に押し下げの色にする。これはロックとは違う。
@@ -382,6 +440,7 @@ CLOSED: [2025-11-20 Thu 11:22]
 ** DONE シフトキーの状態で大文字小文字の表示を切り替える
 CLOSED: [2025-11-20 Thu 11:22]
 更新メカニズムを整備する。
+
 ** DONE key-dataを何か他の用語に変える。
 CLOSED: [2025-11-20 Thu 13:52]
 key-type、key-data、key-objectと似たようなのが複数あって分かりづらい。
@@ -392,8 +451,16 @@ key-type、key-data、key-objectと似たようなのが複数あって分かり
 key-descriptorが一番しっくりくる。次いでkey-spec。key-attributeなんてのも。
 vkbd-key-descriptor-*という関数名は長すぎる。key-descくらいでも悪くない。
 いや、でもdescriptorという用語もそれほど分かりやすいものでは無いし、specの方が静的なイメージは上かも。予め指定されたキーの性質、という。ここは素直にspecにしよう。
+
 ** DONE 2回修飾キーを押したときに修飾キーをロックし、3回目で全て解除する
 CLOSED: [2025-11-20 Thu 18:07]
+
 ** CANCELLED Caps Lockを追加する
 CLOSED: [2025-11-20 Thu 18:07]
 2回押しでロックできるようになったので不要。
+
+** DONE フレームの移動範囲を限定する
+CLOSED: [2025-11-21 Fri 11:39]
+タイトルバーが半分……いや、1/3残っていれば良い。
+
+vkbd-keyboard-frame-keep-visible-margins変数を追加した。

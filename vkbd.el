@@ -36,6 +36,7 @@
 ;;   Frame Settings:
 ;;   - `vkbd-keyboard-frame-parameters'
 ;;   - `vkbd-recycle-frames'
+;;   - `vkbd-keyboard-frame-keep-visible-margins'
 
 ;;   Default layout & style:
 ;;   - `vkbd-default-keyboard-layout'
@@ -610,6 +611,8 @@ SIZE is a cons cell (WIDTH . HEIGHT) specifying the frame size in pixels."
       (set-window-buffer window buffer)
       (set-window-dedicated-p window t))))
 
+;; Position & Size Control
+
 ;; `vkbd-text-key-common' faceに:box属性を使うとその:line-widthの分だ
 ;; け計測サイズが足りなくなる現象があるので、その場合はこれで調整する
 ;; こと。
@@ -638,6 +641,75 @@ SIZE is a cons cell (WIDTH . HEIGHT) specifying the frame size in pixels."
     (set-frame-position frame
                         (max 0 (/ (- parent-w frame-w) 2))
                         parent-top)))
+
+(defun vkbd-keyboard-frame-position (frame)
+  (frame-position frame))
+
+(defun vkbd-set-keyboard-frame-position (frame xy)
+  (setq xy (vkbd-limit-keyboard-frame-position frame xy))
+  (modify-frame-parameters frame `((left . (+ ,(car xy)))
+                                   (top . (+ ,(cdr xy))))))
+
+(defcustom vkbd-keyboard-frame-keep-visible-margins
+  '(80 32 80 1000000)
+  "Margins to keep visible when dragging the virtual keyboard frame.
+
+These values define the minimum amount (in pixels) of the keyboard
+frame that must remain visible within the parent display area during
+dragging operations.  This prevents the frame from being moved
+completely off-screen while still allowing partial positioning
+outside the visible area.
+
+The list contains four integers: (LEFT TOP RIGHT BOTTOM).
+
+Each margin value is capped by the corresponding frame dimension.
+For example, if BOTTOM is set to a value larger than the frame height,
+it effectively equals the frame height, preventing the frame from
+extending above the parent display area.  This ensures the title bar
+remains accessible."
+  :type '(list :tag "Margins (In pixels)"
+               (integer :tag "Left")
+               (integer :tag "Top")
+               (integer :tag "Right")
+               (integer :tag "Bottom"))
+  :group 'vkbd)
+
+(defun vkbd-limit-keyboard-frame-position (frame xy)
+  "Limit position XY to keep FRAME partially visible within the parent area.
+
+XY is a cons cell (X . Y) representing the desired frame position.
+Returns a cons cell with the position adjusted to satisfy the
+visibility constraints defined by `vkbd-keyboard-frame-keep-visible-margins'."
+  (if-let* ((parent-frame (frame-parent frame)))
+      (let* ((frame-w (frame-outer-width frame))
+             (frame-h (frame-outer-height frame))
+             (parent-inner-edges (frame-edges parent-frame 'inner))
+             (parent-origin-x (nth 0 parent-inner-edges))
+             (parent-origin-y (nth 1 parent-inner-edges))
+             (parent-limit-edges (frame-edges parent-frame 'native))
+             (parent-l (- (nth 0 parent-limit-edges) parent-origin-x))
+             (parent-t (- (nth 1 parent-limit-edges) parent-origin-y))
+             (parent-r (- (nth 2 parent-limit-edges) parent-origin-x))
+             (parent-b (- (nth 3 parent-limit-edges) parent-origin-y))
+             (margin-l (min (nth 0 vkbd-keyboard-frame-keep-visible-margins)
+                            frame-w))
+             (margin-t (min (nth 1 vkbd-keyboard-frame-keep-visible-margins)
+                            frame-h))
+             (margin-r (min (nth 2 vkbd-keyboard-frame-keep-visible-margins)
+                            frame-w))
+             (margin-b (min (nth 3 vkbd-keyboard-frame-keep-visible-margins)
+                            frame-h))
+             (limit-l (+ (- parent-l frame-w) margin-r))
+             (limit-r (- parent-r margin-l))
+             (limit-t (+ (- parent-t frame-h) margin-b))
+             (limit-b (- parent-b margin-t)))
+        (cons (max limit-l (min (car xy) limit-r))
+              (max limit-t (min (cdr xy) limit-b))))
+    ;; Not a child frame
+    ;; TODO: Limit coordinates to within the screen area
+    xy))
+
+;; Focus Control
 
 (defun vkbd-select-parent-frame (&optional frame)
   "If FRAME has a parent frame, select it and transfer input focus to it."
@@ -748,7 +820,7 @@ last move.")
   (interactive "e")
   (let* ((down-frame (window-frame (posn-window (event-start down-event))))
          (down-xy (vkbd-posn-x-y-on-display (event-start down-event)))
-         (down-frame-xy (frame-position down-frame))
+         (down-frame-xy (vkbd-keyboard-frame-position down-frame))
          (moved nil)
          (last-frame-moved-time 0.0)
          (touch (eq (car-safe down-event) 'touchscreen-begin))
@@ -765,11 +837,10 @@ last move.")
                               (* double-click-fuzz double-click-fuzz)))
                   (setq moved t))
                 (when moved
-                  (let ((new-x (+ (car down-frame-xy) dx))
-                        (new-y (+ (cdr down-frame-xy) dy)))
-                    (set-frame-parameter down-frame 'left (list '+ new-x))
-                    (set-frame-parameter down-frame 'top  (list '+ new-y))
-                    (setq last-frame-moved-time (float-time)))))))))
+                  (vkbd-set-keyboard-frame-position
+                   down-frame
+                   (cons (+ (car down-frame-xy) dx)
+                         (+ (cdr down-frame-xy) dy)))))))))
     (vkbd-track-drag down-event on-move :on-up on-move
                      :allow-out-of-target-p t)
     moved))
