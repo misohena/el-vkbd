@@ -651,7 +651,7 @@ SIZE is a cons cell (WIDTH . HEIGHT) specifying the frame size in pixels."
                                    (top . (+ ,(cdr xy))))))
 
 (defcustom vkbd-keyboard-frame-keep-visible-margins
-  '(80 32 80 1000000)
+  '(120 48 80 1000000)
   "Margins to keep visible when dragging the virtual keyboard frame.
 
 These values define the minimum amount (in pixels) of the keyboard
