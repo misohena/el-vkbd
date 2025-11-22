@@ -1399,6 +1399,9 @@ If shift is not pressed, return the base key-type."
              ;; End of key press
              ((memq new-event-type '(mouse-1 drag-mouse-1 touchscreen-end))
               nil)
+             ;; Movement
+             ((memq new-event-type '(mouse-movement touchscreen-end))
+              t)
              ;; switch-frame
              ((eq new-event-type 'switch-frame)
               t) ;; or nil?
