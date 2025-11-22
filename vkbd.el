@@ -32,6 +32,7 @@
 
 ;;   Global keyboard settings:
 ;;   - `vkbd-global-keyboard-options'
+;;   - `vkbd-global-keyboard-user-data-storage'
 
 ;;   Frame Settings:
 ;;   - `vkbd-keyboard-frame-parameters'
@@ -135,6 +136,15 @@ This is a property list passed to `vkbd-make-keyboard' when creating the
 global keyboard."
   :group 'vkbd :type 'plist)
 
+(defun vkbd-global-keyboard-options ()
+  (let ((options vkbd-global-keyboard-options))
+    (unless (plist-member options :user-data-storage)
+      (setq options
+            (nconc (list :user-data-storage
+                         (vkbd-global-keyboard-user-data-storage))
+                   options)))
+    options))
+
 (defvar vkbd-global-keyboard nil
   "The global keyboard buffer, or nil if not created.")
 
@@ -154,7 +164,7 @@ one."
     (setq vkbd-global-keyboard nil))
   (unless vkbd-global-keyboard
     (setq vkbd-global-keyboard
-          (vkbd-make-keyboard vkbd-global-keyboard-options))))
+          (vkbd-make-keyboard (vkbd-global-keyboard-options)))))
 
 ;;;###autoload
 (defun vkbd-close-global-keyboard ()
@@ -186,6 +196,9 @@ one."
   "Access property PROP from KEYBOARD object."
   `(plist-get (cdr ,keyboard) ,prop))
 
+(defconst vkbd-keyboard-user-data-item-names
+  '(frame-position))
+
 (defun vkbd-make-keyboard (&optional options)
   "Create a virtual keyboard (on-screen keyboard).
 
@@ -198,37 +211,52 @@ Return a object that holds all information about the keyboard."
   (setq options (vkbd-fix-keyboard-style options))
 
   ;; Create a frame and buffer
-  (let* ((frame (vkbd-make-keyboard-frame options '(10 . 10) '(600 . 300)))
-         (keyboard (list 'vkbd
-                         :options options
-                         :frame frame
-                         :buffer nil
-                         :pressed-modifiers nil
-                         :locked-modifiers nil))
+  (let* ((keyboard
+          (list 'vkbd
+                :live t
+                :options options
+                :frame nil
+                :buffer nil
+                :pressed-modifiers nil
+                :locked-modifiers nil
+                :user-data (vkbd-load-keyboard-user-data
+                            options
+                            (mapcar (lambda (name)
+                                      (cons name nil))
+                                    vkbd-keyboard-user-data-item-names))))
+         (frame (vkbd-make-keyboard-frame keyboard))
          (buffer (vkbd-make-keyboard-buffer keyboard)))
+
+    (setf (vkbd-keyboard-property keyboard :frame) frame)
+    (setf (vkbd-keyboard-property keyboard :buffer) buffer)
+
     ;; Connect the buffer and frame.
     (vkbd-set-keyboard-buffer-to-window (frame-root-window frame) buffer)
 
     ;; Modify the frame position and size.
     (vkbd-fit-keyboard-frame-size-to-buffer-contents options frame)
-    (vkbd-initialize-frame-position options frame)
+    (vkbd-initialize-keyboard-frame-position keyboard)
 
-    (setf (vkbd-keyboard-property keyboard :buffer) buffer)
     keyboard))
 ;; EXAMPLE: (vkbd-make-keyboard)
 
 (defun vkbd-delete-keyboard (keyboard)
   "Delete KEYBOARD, eliminating it from use."
-  (let ((frame (vkbd-keyboard-frame keyboard)))
-    (when (vkbd-frame-live-p frame)
-      ;; Note: The buffer associated with the dedicated window is
-      ;; deleted at this point.
-      (vkbd-delete-frame frame)))
-  ;; Likely already deleted along with the dedicated window, but
-  ;; delete just in case
-  (let ((buffer (vkbd-keyboard-buffer keyboard)))
-    (when (buffer-live-p buffer)
-      (kill-buffer buffer))))
+  (when (vkbd-keyboard-property keyboard :live)
+    (let ((frame (vkbd-keyboard-frame keyboard)))
+      (when (vkbd-frame-live-p frame)
+        ;; Note: The buffer associated with the dedicated window is
+        ;; deleted at this point.
+        (vkbd-delete-frame frame)))
+    ;; Likely already deleted along with the dedicated window, but
+    ;; delete just in case
+    (let ((buffer (vkbd-keyboard-buffer keyboard)))
+      (when (buffer-live-p buffer)
+        (kill-buffer buffer)))
+    ;; Save user data
+    (vkbd-save-keyboard-user-data keyboard)
+    ;; Mark as killed
+    (setf (vkbd-keyboard-property keyboard :live) nil)))
 
 (defun vkbd-delete-all-keyboards ()
   "Forcefully delete all keyboard objects.
@@ -237,11 +265,13 @@ This function is for debugging purposes."
     (when (vkbd-keyboard-buffer-p buffer)
       (vkbd-delete-keyboard buffer))))
 
+;; Accessors
+
 (defun vkbd-keyboard-live-p (keyboard)
   "Return non-nil if KEYBOARD is a keyboard which has not been deleted."
-  ;; or?
-  (and (buffer-live-p (vkbd-keyboard-buffer keyboard))
-       (vkbd-frame-live-p (vkbd-keyboard-frame keyboard))))
+  ;; (and (buffer-live-p (vkbd-keyboard-buffer keyboard))
+  ;;      (vkbd-frame-live-p (vkbd-keyboard-frame keyboard)))
+  (vkbd-keyboard-property keyboard :live))
 
 (defun vkbd-keyboard-options (keyboard)
   "Return the options plist associated with KEYBOARD."
@@ -254,6 +284,34 @@ This function is for debugging purposes."
 (defun vkbd-keyboard-frame (keyboard)
   "Return the frame associated with KEYBOARD."
   (vkbd-keyboard-property keyboard :frame))
+
+;; User Data
+
+(defun vkbd-load-keyboard-user-data (options user-data-alist)
+  (vkbd-data-storage-load
+   (plist-get options :user-data-storage)
+   user-data-alist))
+
+(defun vkbd-save-keyboard-user-data (keyboard)
+  (vkbd-data-storage-save
+   (plist-get (vkbd-keyboard-options keyboard) :user-data-storage)
+   (vkbd-keyboard-property keyboard :user-data)))
+
+(defun vkbd-set-keyboard-user-data (keyboard item-name item-value)
+  (setf (alist-get item-name (vkbd-keyboard-property keyboard :user-data))
+        item-value))
+
+(defun vkbd-keyboard-user-data (keyboard item-name &optional type-cast)
+  (let ((value
+         (alist-get item-name (vkbd-keyboard-property keyboard :user-data))))
+    (if (functionp type-cast)
+        (funcall type-cast value)
+      value)))
+
+(defun vkbd-cast-cons-numbers (value)
+  (and (consp value) (numberp (car value)) (numberp (cdr value)) value))
+
+;; Key States
 
 (defun vkbd-keyboard-pressed-modifiers (keyboard)
   "Return the list of currently pressed modifier keys in KEYBOARD."
@@ -309,9 +367,13 @@ This function is for debugging purposes."
   ;; Update display
   (vkbd-update-keyboard-display keyboard))
 
+;; Keyboard Display
+
 (defun vkbd-update-keyboard-display (keyboard)
   "Update the appearance of KEYBOARD to match its state."
   (vkbd-keyboard-style--update-keyboard keyboard))
+
+;; Keyboard Events
 
 (defun vkbd-event-to-keyboard (event)
   "Return the keyboard object where EVENT occurred, or nil if not in a
@@ -583,23 +645,32 @@ The deleted frame will not be reused."
   "Return `vkbd-keyboard-frame-parameters'."
   vkbd-keyboard-frame-parameters)
 
-(defun vkbd-make-keyboard-frame (options position size)
+(defun vkbd-make-keyboard-frame (keyboard &optional position size)
   "Create a frame to display a keyboard.
 
-OPTIONS is a property list of settings.
+KEYBOARD is a keyboard object.
 POSITION is a cons cell (X . Y) specifying the frame position.
 SIZE is a cons cell (WIDTH . HEIGHT) specifying the frame size in pixels."
-  (let ((before-make-frame-hook nil)
-        (after-make-frame-functions nil))
-    (vkbd-make-frame
-     (append
-      `((parent-frame . ,(selected-frame))
-        (width . (text-pixels . ,(car size)))
-        (height . (text-pixels . ,(cdr size)))
-        (left . ,(car position))
-        (top . ,(cdr position)))
-      (or (plist-get options :frame-parameters)
-          (vkbd-keyboard-frame-parameters))))))
+  (let* ((before-make-frame-hook nil)
+         (after-make-frame-functions nil)
+         (frame
+          (vkbd-make-frame
+           (append
+            `((parent-frame . ,(selected-frame)))
+            (when size
+              `((width . (text-pixels . ,(car size)))
+                (height . (text-pixels . ,(cdr size)))))
+            (when position
+              `((left . ,(car position))
+                (top . ,(cdr position))))
+            (or (plist-get (vkbd-keyboard-options keyboard) :frame-parameters)
+                (vkbd-keyboard-frame-parameters))))))
+    (set-frame-parameter frame 'vkbd-keyboard keyboard)
+    frame))
+
+(defun vkbd-keyboard-frame-keyboard (frame)
+  "Return th keyboard object associated with FRAME."
+  (frame-parameter frame 'vkbd-keyboard))
 
 (defun vkbd-set-keyboard-buffer-to-window (window buffer)
   "Set BUFFER to WINDOW for displaying the keyboard."
@@ -627,20 +698,29 @@ SIZE is a cons cell (WIDTH . HEIGHT) specifying the frame size in pixels."
                     (+ (car size) (car vkbd-keyboard-size-adjustment))
                     (+ (cdr size) (cdr vkbd-keyboard-size-adjustment))
                     t))
+  ;; TODO: Use `fit-frame-to-buffer' ?
   ;; (fit-frame-to-buffer frame)
   )
 
-(defun vkbd-initialize-frame-position (_options frame)
-  "Initialize the position of the keyboard FRAME."
-  ;; TODO: 位置をoptionsで指定したりカスタマイズ出来るようにする。
+(defun vkbd-initialize-keyboard-frame-position (keyboard)
+  "Initialize the position of the KEYBOARD."
+  (let ((frame (vkbd-keyboard-frame keyboard)))
+    (vkbd-set-keyboard-frame-position
+     frame
+     (or (vkbd-cast-cons-numbers
+          (plist-get (vkbd-keyboard-options keyboard) :frame-position))
+         (vkbd-keyboard-user-data keyboard 'frame-position
+                                  #'vkbd-cast-cons-numbers)
+         (vkbd-frame-position-center-top frame)))))
+
+(defun vkbd-frame-position-center-top (frame)
   (let* ((parent-edges
           (window-edges (frame-root-window (frame-parent frame)) nil nil t))
          (parent-top (nth 1 parent-edges))
          (parent-w (- (nth 2 parent-edges) (nth 0 parent-edges)))
          (frame-w (frame-outer-width frame)))
-    (set-frame-position frame
-                        (max 0 (/ (- parent-w frame-w) 2))
-                        parent-top)))
+    (cons (max 0 (/ (- parent-w frame-w) 2))
+          parent-top)))
 
 (defun vkbd-keyboard-frame-position (frame)
   (frame-position frame))
@@ -648,7 +728,10 @@ SIZE is a cons cell (WIDTH . HEIGHT) specifying the frame size in pixels."
 (defun vkbd-set-keyboard-frame-position (frame xy)
   (setq xy (vkbd-limit-keyboard-frame-position frame xy))
   (modify-frame-parameters frame `((left . (+ ,(car xy)))
-                                   (top . (+ ,(cdr xy))))))
+                                   (top . (+ ,(cdr xy)))))
+  (when-let* ((keyboard (vkbd-keyboard-frame-keyboard frame)))
+    (vkbd-set-keyboard-user-data
+     keyboard 'frame-position (cons (car xy) (cdr xy)))))
 
 (defcustom vkbd-keyboard-frame-keep-visible-margins
   '(120 48 80 1000000)
@@ -761,8 +844,7 @@ visibility constraints defined by `vkbd-keyboard-frame-keep-visible-margins'."
 (defun vkbd-make-keyboard-buffer (keyboard)
   "Create a buffer that holds the keyboard display contents and state.
 
-OPTIONS is a property list of settings.
-FRAME is the frame where this keyboard will be displayed."
+KEYBOARD is a keyboard object."
   (let ((options (vkbd-keyboard-options keyboard))
         (buffer (generate-new-buffer vkbd-keyboard-buffer-name)))
     (with-current-buffer buffer

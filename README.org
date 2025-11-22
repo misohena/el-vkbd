@@ -80,6 +80,7 @@ M-x customize-group vkbd
 
 Global keyboard settings:
 - `vkbd-global-keyboard-options' : Settings applied only to the global keyboard (search for ~(plist-get options~ to find available options)
+- `vkbd-global-keyboard-user-data-storage' : Storage location for user data (such as frame position) applied only to the global keyboard
 
 Frame settings:
 - `vkbd-keyboard-frame-parameters' : Frame parameters (note that changes may not be immediately reflected due to frame reuse)
