@@ -2029,6 +2029,429 @@ PROMPT is the prompt string for the current key sequence."
                                keyboard prompt event))
 
 
+;;;; Data Storage
+
+(defun vkbd-data-storage-load (data-storage-spec data-alist)
+  "Load data from the storage location specified by DATA-STORAGE-SPEC.
+
+DATA-ALIST is an alist containing the item names of the data to load.
+Only the keys of the alist are used; the values are ignored."
+  (when data-storage-spec
+    (funcall (car data-storage-spec) 'load (cdr data-storage-spec) data-alist)))
+
+(defun vkbd-data-storage-save (data-storage-spec data-alist)
+  "Save data to the storage location specified by DATA-STORAGE-SPEC.
+
+DATA-ALIST is an alist of the data to save. Its keys must be comparable
+with `eq'.
+
+DATA-STORAGE-SPEC has the form (<data-storage-function> . <ds-option-plist>).
+
+<data-storage-function> is a function that takes
+(action <ds-option-plist> DATA-ALIST) as arguments.
+The action argument is the symbol `load' or `save'.
+
+The only <data-storage-function> provided by this library is the
+`vkbd-data-storage' function."
+  (when data-storage-spec
+    ;; `vkbd-data-storage'
+    (funcall (car data-storage-spec) 'save (cdr data-storage-spec) data-alist)))
+
+;; <data-storage-spec> :
+;;   <default-data-storage-spec>
+;;   <custom-data-storage-spec>
+
+;; <custom-data-storage-spec> : (<data-storage-function> . <plist>)
+
+;; <default-data-storage-spec> : (vkbd-data-storage . <ds-params>)
+;; Related function: `vkbd-data-storage'
+
+;; <ds-params> : <ds-param>...
+;; <ds-param> :
+;;  :default-file (<default-file-prop>...)
+;;  :default-destination <save-destination>
+;;  :item-destination ((<item-name> . <save-destination>)...)
+;; <item-name> : <symbol>
+;; <default-file-prop> :
+;;   :file <filename>
+;;   :value-place <value-place>
+
+;; <save-destination> : (<store-location> <value-place>)
+;; Related variable: `vkbd-data-storage-cus-type-save-destination'
+(defmacro vkbd-data-storage--dest-store-location (dest) `(car ,dest))
+(defmacro vkbd-data-storage--dest-value-place (dest) `(cadr ,dest))
+
+;; <store-location> :
+;;   (file <filename>?)
+;;   (variable <varname>)
+;;   (custom-variable <varname>)
+;;   (function <function>)
+;; Related variable: `vkbd-data-storage-cus-type-save-destination'
+(defmacro vkbd-data-storage--location-type (store-location)
+  `(car ,store-location))
+(defmacro vkbd-data-storage--location-file (store-location)
+  `(cadr ,store-location))
+(defmacro vkbd-data-storage--location-name (store-location)
+  `(cadr ,store-location))
+(defmacro vkbd-data-storage--location-function (store-location)
+  `(cadr ,store-location))
+(defun vkbd-data-storage--make-store-location-file (filename)
+  (list 'file filename))
+
+;; <value-place> :
+;;   (value-only)
+;;   (alist <use-item-name> <alist-keys>)
+;;   nil
+;; Related variable: `vkbd-data-storage-cus-type-value-place'
+(defmacro vkbd-data-storage--value-place-type (value-place)
+  `(car ,value-place))
+(defmacro vkbd-data-storage--value-place-alist-use-item-name (value-place)
+  `(cadr ,value-place))
+(defmacro vkbd-data-storage--value-place-alist-keys (value-place)
+  `(caddr ,value-place))
+
+(defconst vkbd-data-storage-cus-type-value-place
+  '(choice :tag "Value place"
+           (const :tag "Value only" (value-only))
+           (list :tag "In alist"
+                 (const :format "" alist)
+                 (boolean :tag "Use item name as key" :value t)
+                 (repeat :tag "Parent keys";; :value (default)
+                         symbol))
+           (const :tag "Default" nil)))
+
+(defconst vkbd-data-storage-cus-type-save-destination
+  `(choice
+    :value ((file) nil)
+    (list :tag "File"
+          (cons :format "%v"
+                (const :format "" file)
+                (choice :tag "Save to"
+                        (const :tag "Default file" nil)
+                        (list :tag "Specific file"
+                              (file :tag "Save file name" :value "vkbd"))))
+          ,vkbd-data-storage-cus-type-value-place)
+    (list :tag "Variable"
+          (list :format "%v"
+                (const :format "" variable)
+                (variable :tag "Variable Name"))
+          ,vkbd-data-storage-cus-type-value-place)
+    (list :tag "Customization Variable"
+          (list :format "%v"
+                (const :format "" custom-variable)
+                (variable :tag "Variable Name"))
+          ,vkbd-data-storage-cus-type-value-place)
+    (cons :tag "Function"
+          (list :format "%v"
+                (const :format "" function)
+                (function :tag "Function"))
+          ,vkbd-data-storage-cus-type-value-place)
+    (const :tag "Don't save" nil)))
+
+(defconst vkbd-data-storage-cus-type
+  `(choice
+    :value (vkbd-data-storage)
+    (cons :tag "Default data storage"
+          (const :format "" vkbd-data-storage)
+          (set :tag "Options"
+               (list :inline t :tag "Default file"
+                     (const :format "" :default-file)
+                     (set :format "%v"
+                          (list :inline t :format "%v"
+                                (const :format "" :file)
+                                (file :tag "Save file name" :value "vkbd"))
+                          (list :inline t :format "%v"
+                                (const :format "" :value-place)
+                                ,vkbd-data-storage-cus-type-value-place)))
+               (list :inline t :tag "Default save destination"
+                     (const :format "" :default-destination)
+                     ,vkbd-data-storage-cus-type-save-destination)
+               (list :inline t :tag "Item-specific save destination"
+                     (const :format "" :item-destination)
+                     (alist
+                      :key-type (choice
+                                 :tag "Item name"
+                                 ,@(mapcar (lambda (name)
+                                             `(const ,name))
+                                           vkbd-keyboard-user-data-item-names)
+                                 (symbol :tag "Item name"))
+                      :value-type
+                      ,vkbd-data-storage-cus-type-save-destination))))
+    (cons :tag "Custom data storage"
+          (function :tag "User data storage function")
+          (repeat :tag "Parameters"
+                  (list :tag "Param" :inline t
+                        (symbol :tag "Key")
+                        (sexp :tag "Value"))))
+    (const :tag "Don't save" nil)))
+
+(defcustom vkbd-global-keyboard-user-data-storage
+  '(vkbd-data-storage
+    :default-file (:file "vkbd" :value-place (alist t (global-keyboard)))
+    :default-destination ((file) nil)
+    :item-destination nil)
+  "User data storage specification for the global keyboard.
+See `vkbd-data-storage-save' and `vkbd-data-storage' for how to specify this."
+  :group 'vkbd
+  :type vkbd-data-storage-cus-type)
+
+(defun vkbd-global-keyboard-user-data-storage ()
+  vkbd-global-keyboard-user-data-storage)
+
+(defun vkbd-data-storage--make-location-items-alist (ds-params data-alist)
+  (let ((default-file (plist-get ds-params :default-file))
+        (default-dest (plist-get ds-params :default-destination))
+        (item-dest-alist (plist-get ds-params :item-destination))
+        (location-item-alist nil))
+    (dolist (item data-alist)
+      (let* ((item-name (car item))
+             (item-value (cdr item))
+             (item-dest (alist-get item-name item-dest-alist))
+             (dest (or item-dest default-dest))
+             (store-location (vkbd-data-storage--dest-store-location dest))
+             (value-place (vkbd-data-storage--dest-value-place dest))
+             (store-type (vkbd-data-storage--location-type store-location)))
+        ;; Normalize STORE-LOCATION and VALUE-TYPE
+        (pcase store-type
+          ('file
+           (setq store-location
+                 (vkbd-data-storage--make-store-location-file
+                  (locate-user-emacs-file
+                   (or (vkbd-data-storage--location-file store-location)
+                       (plist-get default-file :file)
+                       "vkbd"))))
+           (unless value-place
+             (setq value-place (or (plist-get default-file :value-place)
+                                   '(alist t (default))))))
+          ((or 'variable 'custom-variable)
+           ;; TODO: Check boundp ?
+           (unless (vkbd-data-storage--location-name store-location)
+             (setq store-location nil))
+           (unless value-place
+             (setq value-place (if item-dest '(value-only) '(alist t nil)))))
+          ('function
+           (unless (functionp
+                    (vkbd-data-storage--location-function store-location))
+             (setq store-location nil))
+           (unless value-place
+             (setq value-place (if item-dest '(value-only) '(alist t nil))))))
+
+        (when (and store-location value-place)
+          (push
+           ;; item-access:
+           ;; (value-place item-name item-value)
+           (list value-place item-name item-value)
+           (alist-get store-location location-item-alist nil nil #'equal)))))
+    location-item-alist))
+;; TEST: (vkbd-data-storage--make-location-items-alist '(:default-file (:file "vkbd" :value-place (alist t (global-keyboard))) :default-destination ((file) nil)) '((frame-position . (10 . 20)) (layout . vkbd-layout-10x9))) => (((file "~/.emacs.d/vkbd") ((alist t (global-keyboard)) layout vkbd-layout-10x9) ((alist t (global-keyboard)) frame-position (10 . 20))))
+
+
+(defun vkbd-data-storage (action ds-params data-alist)
+  "Save or load data to/from the storage location specified by DS-PARAMS,
+which is a plist.
+
+When action is the symbol `load', data is loaded; when `save', data is saved.
+
+During loading, only the keys of DATA-ALIST are used as item names to
+load; values are ignored.
+
+The properties that can be specified in DS-PARAMS are as follows:
+
+  :default-file (<default-file-prop>...)
+  :default-destination <save-destination>
+  :item-destination ((<item-name> . <save-destination>)...)
+
+The :default-file property specifies the default filename and the
+location within it for data storage. Its value is a plist with the
+following properties:
+
+  :file <filename>
+  :value-place <value-place>
+
+  If <filename> is a relative path, the absolute path is determined by
+  `locate-user-emacs-file'. Typically, it is a relative path from
+  ~/.emacs.d/.
+
+  <value-place> specifies how data is stored within the file (described
+  later). If nil or unspecified, it defaults to (alist t (default)),
+  which creates an alist under the top-level key `default', with item
+  names as keys and item values as values.
+
+The :default-destination property specifies the default save destination.
+
+The :item-destination property specifies save destinations for each item
+name as an alist, where <item-name> keys are symbols.
+
+A <save-destination> that specifies a storage location has the following
+list format, indicating the storage location and how values are
+represented within it:
+
+  (<store-location> <value-place>)
+
+<store-location> is one of the following:
+
+  (file [<filename>])
+  (variable <varname>)
+  (custom-variable <varname>)
+  (function <function>)
+
+<value-place> is one of the following:
+  (value-only)
+  (alist <use-item-name> <alist-keys>)
+  nil
+
+If nil is specified for <value-place>, a context-dependent default value
+is used."
+  (pcase action
+    ('save (vkbd-data-storage--save ds-params data-alist))
+    ('load (vkbd-data-storage--load ds-params data-alist))))
+
+(defun vkbd-data-storage--save (ds-params data-alist)
+  (let ((customized nil))
+    (dolist (store-location-and-items
+             (vkbd-data-storage--make-location-items-alist ds-params
+                                                           data-alist))
+      (let* ((store-location (car store-location-and-items))
+             (item-list (cdr store-location-and-items))
+             ;; Load from store
+             (store-value (vkbd-data-storage--load-store-value store-location)))
+        ;; Modify store value
+        (dolist (item-access item-list)
+          (setq store-value
+                (apply
+                 #'vkbd-data-storage--set-value
+                 store-value
+                 ;; (value-place item-name item-value)
+                 item-access)))
+
+        ;; Save to store
+        (vkbd-data-storage--save-store-value store-location store-value)
+
+        (when (eq (vkbd-data-storage--location-type store-location)
+                  'custom-variable)
+          (setq customized t))))
+    ;; Save custom file
+    (when customized
+      ;; `customize-save-customized' calls `custom-save-all'
+      (customize-save-customized))))
+
+(defun vkbd-data-storage--set-value (store-value
+                                     value-place item-name item-value)
+  (pcase (vkbd-data-storage--value-place-type value-place)
+    ('value-only
+     (setq store-value item-value))
+    ('alist
+     (let ((use-item-name
+            (vkbd-data-storage--value-place-alist-use-item-name value-place))
+           (keys
+            (vkbd-data-storage--value-place-alist-keys value-place))
+           (root (cons nil store-value)))
+       (when use-item-name
+         (setq keys (append keys (list item-name))))
+       (ignore-errors
+         (let ((node root))
+           (dolist (k keys)
+             (let ((sub-node (assq k (cdr node))))
+               (unless sub-node
+                 (setq sub-node (cons k nil))
+                 (push sub-node (cdr node)))
+               (setq node sub-node)))
+           (setcdr node item-value)))
+       (setq store-value (cdr root)))))
+  store-value)
+
+(defun vkbd-data-storage--load (ds-params data-alist)
+  (let (result)
+    (dolist (store-location-and-items
+             (vkbd-data-storage--make-location-items-alist ds-params
+                                                           data-alist))
+      (let* ((store-location (car store-location-and-items))
+             (item-list (cdr store-location-and-items))
+             ;; Load from store
+             (store-value (vkbd-data-storage--load-store-value store-location)))
+        ;; Collect item values from store value
+        (dolist (item-access item-list)
+          (let ((item
+                 (apply
+                  #'vkbd-data-storage--get-value
+                  store-value
+                  ;; (value-place item-name item-value)
+                  item-access)))
+            (when item
+              (push item result))))))
+    (nreverse result)))
+
+(defun vkbd-data-storage--get-value (store-value
+                                     value-place item-name _item-value)
+  (pcase (vkbd-data-storage--value-place-type value-place)
+    ('value-only
+     (cons item-name store-value))
+    ('alist
+     (let ((use-item-name
+            (vkbd-data-storage--value-place-alist-use-item-name value-place))
+           (keys
+            (vkbd-data-storage--value-place-alist-keys value-place)))
+       (when use-item-name
+         (setq keys (append keys (list item-name))))
+       (ignore-errors
+         (let ((node store-value))
+           (while (and keys (setq node (alist-get (car keys) node)))
+             (setq keys (cdr keys)))
+           (cons item-name node)))))))
+
+(defun vkbd-data-storage--load-store-value (store-location)
+  (pcase (vkbd-data-storage--location-type store-location)
+    ;; (file <filename>)
+    ('file
+     (vkbd-data-storage--load-file
+      (vkbd-data-storage--location-file store-location)))
+    ;; (variable|custom-variable <name>)
+    ((or 'variable 'custom-variable)
+     ;; TODO: Call `custom-load-symbol' ?
+     (default-value
+      (vkbd-data-storage--location-name store-location)))
+    ;; (function <function>)
+    ('function
+     (funcall
+      (vkbd-data-storage--location-name store-location) 'load))))
+
+(defun vkbd-data-storage--save-store-value (store-location store-value)
+  (pcase (vkbd-data-storage--location-type store-location)
+    ;; (file <filename>)
+    ('file
+     (vkbd-data-storage--save-file
+      (vkbd-data-storage--location-file store-location)
+      store-value))
+    ;; (variable <name>)
+    ('variable
+     (setf (default-value (vkbd-data-storage--location-name store-location))
+           store-value))
+    ;; (custom-variable <name>)
+    ('custom-variable
+     ;; TODO: custom-set-variable? setopt?
+     (customize-set-variable
+      (vkbd-data-storage--location-name store-location)
+      store-value))
+    ;; (function <function>)
+    ('function
+     (funcall (vkbd-data-storage--location-name store-location) 'save
+              store-value))))
+
+(defun vkbd-data-storage--load-file (file)
+  (condition-case _err
+      (with-temp-buffer
+        (insert-file-contents file)
+        (goto-char (point-min))
+        (read (current-buffer)))
+    (error nil)))
+
+(defun vkbd-data-storage--save-file (file value)
+  (with-temp-file file
+    (insert
+     ";;; vkbd - Virtual Keyboard Data ---   -*- mode: lisp-data -*-\n")
+    (pp value (current-buffer))))
+
+
 ;;;; Utilities
 
 ;;;;; Echo Area

@@ -464,3 +464,32 @@ CLOSED: [2025-11-21 Fri 11:39]
 タイトルバーが半分……いや、1/3残っていれば良い。
 
 vkbd-keyboard-frame-keep-visible-margins変数を追加した。
+
+** DONE ユーザーデータ(永続データ)の保存機構を作る
+CLOSED: [2025-11-22 Sat 13:44]
+フレームの位置、レイアウトが想定されている。
+
+保存する場所はファイル、変数、カスタマイズ変数、関数呼び出しから選べるようにしたい。項目毎に個別に。
+
+- :user-data-store (<user-data-store-function> . <user-data-store-parameters>) | nil
+- <user-data-store-function> : function (action parameters user-data-alist):void
+- default-user-data-store
+  - :file <filename>
+  - :file-key <symbol>
+  - :item-destination : ( (<item-name> . <destination> ).. )
+  - :default-destination : <destination>
+- <destination> :
+  - (file <filename> <file-key>)
+  - (variable <variable-name>)
+  - (custom-variable <variable-name>)
+  - (function <function>)
+
+うーん複雑だ。こんな複雑な物は必要ないんじゃないの？　まぁ、柔軟性はかなりあるけど。作っちゃったからいいや。詳細はvkbd.elのvkbd-data-storage-*の周辺を参照。
+
+デフォルトの保存先 (locate-user-emacs-file "vkbd") 。もちろんいくらでも保存先を変えられる。ファイル以外にもカスタマイズ変数に保存したり(customファイルが保存できるならセッションを跨いでも有効)、単に普通の変数に保存するだけにもできる(セッション限り有効)。
+
+optionsには:user-data-storageを追加。それを元にユーザーデータを読み書きする。
+
+keyboardオブジェクトには:user-dataプロパティを持たせた。
+
+frame-positionを保存できるようにした。
