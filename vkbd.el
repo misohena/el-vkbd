@@ -1400,7 +1400,7 @@ If shift is not pressed, return the base key-type."
              ((memq new-event-type '(mouse-1 drag-mouse-1 touchscreen-end))
               nil)
              ;; Movement
-             ((memq new-event-type '(mouse-movement touchscreen-end))
+             ((memq new-event-type '(mouse-movement touchscreen-update))
               t)
              ;; switch-frame
              ((eq new-event-type 'switch-frame)
