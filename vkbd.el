@@ -1785,7 +1785,7 @@ KEY-FUN must leave point at the end of the key."
   '((((type x w32 ns haiku pgtk android) (class color)
       (min-colors 88))	; Like default mode line
      :inherit vkbd-text-key-common
-     :background "grey90" :foreground "black")
+     :background "black" :foreground "lightgrey")
     (((type x w32 ns haiku pgtk android))
      :inherit vkbd-text-key-common
      :background "black" :foreground "white"))
@@ -1796,10 +1796,10 @@ KEY-FUN must leave point at the end of the key."
   '((((type x w32 ns haiku pgtk android) (class color)
       (min-colors 88))	; Like default mode line
      :inherit vkbd-text-key-common
-     :background "#f04040" :foreground "black")
+     :background "black" :foreground "#e00")
     (((type x w32 ns haiku pgtk android))
      :inherit vkbd-text-key-common
-     :background "red" :foreground "white"))
+     :background "black" :foreground "white"))
   "Face for locked keys."
   :group 'vkbd-text-style)
 
