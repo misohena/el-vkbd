@@ -397,7 +397,7 @@ Return a list of events corresponding to KEY-TYPE."
               ;; Lock
               (vkbd-set-keyboard-modifier-state keyboard modifier t t))
           ;; Press the MODIFIER
-          (vkbd-set-keyboard-pressed-modifiers keyboard (list modifier)))
+          (vkbd-set-keyboard-modifier-state keyboard modifier t nil))
         ;; No events
         nil)
     ;; Not a simple modifier key (character, special key, compound key, etc.)
