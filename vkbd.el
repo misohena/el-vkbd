@@ -1248,6 +1248,8 @@ Return the resulting modified key."
     (del :text "Del" :seq (delete))
     (hom :text "Home" :seq (home))
     (end :text "End" :seq (end))
+    (app :text "App" :seq (apps))
+    (men :text "Menu" :seq (menu))
     (f1  :text "F1" :seq (f1))
     (f2  :text "F2" :seq (f2))
     (f3  :text "F3" :seq (f3))
@@ -2067,6 +2069,15 @@ Allows entering more symbols without shift while maintaining compactness.")
     (M-x C-x C-c C-g (:w 0.5) (nil :w 3) (:w 0.5) del end pdw (:w 0.5) lft dwn rit))
   "US keyboard-like layout.")
 
+(defconst vkbd-layout-special-keys-only
+  '((esc C-x C-c M-x C-g ins hom up  end pup)
+    (tab shf ctl met men del lft dwn rit pdw))
+  "Layout containing only special keys, intended for use with existing
+keyboards.
+
+Note: The modifier lock feature does not work correctly when used with
+existing keyboards.")
+
 (defcustom vkbd-default-keyboard-layout 'vkbd-layout-10x7
   "Default keyboard layout to use.
 
@@ -2077,6 +2088,7 @@ or a layout list itself."
                  (const vkbd-layout-11x7)
                  (const vkbd-layout-us)
                  (const vkbd-layout-jp)
+                 (const vkbd-layout-special-keys-only)
                  (symbol :tag "Variable name")
                  sexp)
   :group 'vkbd)

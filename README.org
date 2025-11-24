@@ -72,6 +72,14 @@ US keyboard-like layout. The width is wide, so it may not fit within the parent 
 
 Japanese keyboard-like layout. The width is wide, so it may not fit within the parent frame without size adjustment.
 
+** vkbd-layout-special-keys-only
+
+[[file:screenshot/layout-special-keys-only.png]]
+
+Layout containing only special keys, intended for use with existing keyboards.
+
+Note: The modifier lock feature does not work correctly when used with existing keyboards.
+
 * Customization
 
 M-x customize-group vkbd
