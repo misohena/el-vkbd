@@ -1938,7 +1938,7 @@ Invisible keys are used to adjust the position of normal keys."
 
 (defface vkbd-text-column-separator
   '((t (:inherit vkbd-text-keyboard
-                 :height 1.6)))
+                 :height 2.0)))
   "Face for spacing between columns.
 Changing the height of this face also changes the height of keys."
   :group 'vkbd-text-style)

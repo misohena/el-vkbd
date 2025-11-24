@@ -121,9 +121,12 @@ Text style settings:
 
 ** How to Adjust Size
 
-The easiest way is to adjust the :height attribute of the vkbd-text-keyboard face.
+The easiest way to adjust the overall keyboard height is to change the
+:height of the `vkbd-text-keyboard' face.You can also change the font
+parameter in `vkbd-keyboard-frame-parameters'.
 
-Another method might be to change the font parameter in vkbd-keyboard-frame-parameters.
+To change only the key height while keeping the font unchanged, adjust
+the :height of `vkbd-text-column-separator'.
 
 * Using from Emacs Lisp
 
