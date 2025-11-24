@@ -367,6 +367,14 @@ This function is for debugging purposes."
   ;; Update display
   (vkbd-update-keyboard-display keyboard))
 
+(defun vkbd-clear-keyboard-modifier-state (keyboard)
+  (when (or (vkbd-keyboard-property keyboard :pressed-modifiers)
+            (vkbd-keyboard-property keyboard :locked-modifiers))
+    (setf (vkbd-keyboard-property keyboard :pressed-modifiers) nil
+          (vkbd-keyboard-property keyboard :locked-modifiers) nil)
+    ;; Update display
+    (vkbd-update-keyboard-display keyboard)))
+
 ;; Keyboard Display
 
 (defun vkbd-update-keyboard-display (keyboard)
@@ -942,7 +950,9 @@ last move.")
 (defun vkbd-event-to-keyboard-buffer (event)
   "Return the keyboard buffer where EVENT occurred, or nil if not in a
 keyboard buffer."
-  (when event
+  (when (vkbd-input-event-p event)
+    ;; Note: If EVENT is a switch-frame event etc., posn-* will not
+    ;; work, so make sure to limit it to input events.
     (let ((window (posn-window (event-start event))))
       (when (windowp window)
         (let ((buffer (window-buffer window)))
@@ -951,6 +961,26 @@ keyboard buffer."
 
 
 ;;;;; Key Translation
+
+(defconst vkbd-translation-event-types
+  '(down-mouse-1 double-down-mouse-1 triple-down-mouse-1
+                 mouse-1 double-mouse-1 triple-mouse-1
+                 drag-mouse-1 double-drag-mouse-1 triple-drag-mouse-1
+                 touchscreen-begin touchscreen-update touchscreen-end))
+
+(defun vkbd-global-setup ()
+  ;; TODO: What to do if it's already in use.
+  (dolist (event-type vkbd-translation-event-types)
+    (define-key input-decode-map (vector event-type)
+                #'vkbd-translate-keyboard-buffer-event)))
+
+(defun vkbd-global-teardown ()
+  (dolist (event-type vkbd-translation-event-types)
+    (let ((vec (vector event-type)))
+      (when (eq (lookup-key input-decode-map vec)
+                'vkbd-translate-keyboard-buffer-event)
+        (define-key input-decode-map vec nil t)))))
+
 
 (defun vkbd-current-key-remap-event ()
   "Return the single event from `current-key-remap-sequence' if it contains
@@ -973,30 +1003,163 @@ Return an empty vector ([]) to cancel the input event."
   (when-let* ((event (vkbd-current-key-remap-event))
               (buffer (vkbd-event-to-keyboard-buffer event))
               (keyboard (vkbd-keyboard-buffer-keyboard buffer)))
-    (vkbd-log "Translate Event: Event occurred in keyboard buffer %s" event)
+    (vkbd-log "Translate Event: Occurred in keyboard buffer %s" event)
     (let ((result (vkbd-keyboard-style--translate-event keyboard prompt event)))
       (vkbd-log "Translate Event: Return %s" result)
       result)))
 
 
-(defconst vkbd-translation-event-types
-  '(down-mouse-1
-    mouse-1 drag-mouse-1
-    touchscreen-begin touchscreen-update touchscreen-end))
+(defun vkbd-translate-keyboard-event (keyboard _prompt event key-picker)
+  ;; Called when events in `vkbd-translation-event-types' occur.
+  (let ((result-events
+         (vkbd-translate-keyboard-event-loop keyboard event key-picker)))
+    (vkbd-log "Translate Event: Result=%s" result-events)
+    (cond
+     ((eq result-events 'no-conv)
+      nil)
+     ((null result-events)
+      (vkbd-select-parent-frame)
+      [])
+     ((listp result-events)
+      (vkbd-select-parent-frame)
+      (setq last-input-event (car (last result-events))) ;;For context-menu-mode
+      (apply #'vector result-events))
+     (t
+      nil))))
 
-(defun vkbd-global-setup ()
-  ;; TODO: What to do if it's already in use.
-  (dolist (event-type vkbd-translation-event-types)
-    (define-key input-decode-map (vector event-type)
-                #'vkbd-translate-keyboard-buffer-event)))
+;; input-decode-map
+;;   key以外 => 変換しない
+;;   key上
+;;     down => upまで待ち変換
+;;     up => 変換
+;;     その他(mouse-movement, touchscreen-update) => key上である以上はブロック
 
-(defun vkbd-global-teardown ()
-  (dolist (event-type vkbd-translation-event-types)
-    (let ((vec (vector event-type)))
-      (when (eq (lookup-key input-decode-map vec)
-                'vkbd-translate-keyboard-buffer-event)
-        (define-key input-decode-map vec nil t)))))
+;; 問題はdown, upの変換後。
+;; 変換後のイベントがまだ無く、修飾キーが押しっぱなしなら処理を継続する。
+;; read-eventで後続のイベントを読み込んで処理をする。
+;;   key上
+;;     down => upまで待ち変換 => 繰り返し
+;;     up => 変換 => 繰り返し
+;;     mouse-1, touch系 => key上である以上はブロック
+;;     その他 => そのイベントを返す(変換結果とする)
+;;   key以外
+;;     switch-frame => 無視?
+;;     「修飾キーを適用して」返す(変換結果とする)
 
+(defun vkbd-translate-keyboard-event-loop (keyboard event key-picker)
+  (let ((result-events nil)
+        (first t))
+    (while (or event
+               ;; 注意: input-decode-mapに設定した関数は複数のイベント
+               ;; は返せないので、すでに返すものがあるならループしない。
+               (and (null result-events)
+                    (vkbd-keyboard-pressed-modifiers keyboard)))
+
+      (unless event
+        (vkbd-log
+         "Translate Event: Waiting for the next event to apply modifiers %s"
+         (vkbd-keyboard-pressed-modifiers keyboard))
+        (setq event (vkbd-read-event-silent))
+        (vkbd-log "Translate Event: read-event=%s" event))
+
+      (setq result-events
+            (if-let* ((keyobj (funcall key-picker event))
+                      (key-type (vkbd-key-object-to-key-type keyobj keyboard)))
+                ;; EVENT occurred on a key
+                (vkbd-translate-keyboard-event--on-keyobj
+                 keyboard event keyobj key-type first)
+              ;; EVENT did not occur on a key
+              (vkbd-translate-keyboard-event--off-keyobj
+               keyboard event first)))
+      (setq event nil
+            first nil))
+    result-events))
+
+(defun vkbd-translate-keyboard-event--on-keyobj (keyboard
+                                                 event keyobj key-type first)
+  (vkbd-log
+   "Translate Event: Occurred on a key (#%s key-type=%s first=%s)"
+   (vkbd-key-object-id keyobj) key-type first)
+
+  (cond
+   ;; Down event
+   ((memq (car-safe event) '(down-mouse-1
+                             double-down-mouse-1 triple-down-mouse-1
+                             touchscreen-begin))
+    ;; Update key state
+    (vkbd-set-key-object-pressed keyobj t)
+    ;; Wait for up event
+    (vkbd-wait-for-mouse-up-event)
+    ;; Update key state
+    (vkbd-set-key-object-pressed keyobj nil)
+    ;; Convert KEY-TYPE and KEYBOARD's pressed modifiers to events
+    (vkbd-keyboard-key-type-to-events keyboard key-type))
+
+   ;; Up event without down event
+   ;;
+   ;; 注意: 例えば C-x などと打った後にマウスボタンを押し下げると
+   ;; down-mouse-1が来ないことがある。その場合でもmouse-1は来ること
+   ;; が多い。詳しい原因は分からない。その場合はここにいきなり来る。
+   ;; 何もしないと C-x などの後にキーが打てないので対応する。
+   ((memq (car-safe event) '(mouse-1
+                             double-mouse-1 triple-mouse-1
+                             touchscreen-end))
+    (vkbd-keyboard-key-type-to-events keyboard key-type))
+
+   ;; Movement event => Block
+   ((or (mouse-event-p event)
+        (eq (car-safe event) 'touchscreen-update))
+    nil)
+
+   ;; Unknown event on the key (mouse-2|3 ?) => No conv
+   (t
+    (if first
+        'no-conv
+      (list event)))))
+
+(defun vkbd-translate-keyboard-event--off-keyobj (keyboard event first)
+  (vkbd-log "Translate Event: Occurred not on a key")
+  (cond
+   ;; First event => No conv
+   (first
+    'no-conv)
+   ;; Character, mouse, touchscreen => Apply modifiers
+   ((vkbd-input-event-p event)
+    (prog1
+        (list (vkbd-apply-modifiers
+               event (vkbd-keyboard-pressed-modifiers keyboard)))
+      ;; 注意: ロック状態は維持できない。
+      (vkbd-clear-keyboard-modifier-state keyboard)))
+   ;; switch-frame => Ignore
+   ;; C-c C- の後に割り込んできたりするので。
+   ((eq (car-safe event) 'switch-frame)
+    nil)
+   ;; Unknown event => No conv
+   ;; 注意: firstではないのでno-convを返してはならない。
+   ;; 返すとEVENTではなく最初のイベントが選ばれてしまう。
+   (t
+    ;; (if first
+    ;;     'no-conv
+    (list event))))
+
+(defun vkbd-wait-for-mouse-up-event ()
+  (vkbd-log "Translate Event: Waiting for mouse up")
+  (while
+      (let* ((new-event (vkbd-read-event-silent))
+             (new-event-type (car-safe new-event)))
+        (cond
+         ;; End of key press
+         ((memq new-event-type '(mouse-1 drag-mouse-1 touchscreen-end))
+          nil)
+         ;; Movement
+         ((memq new-event-type '(mouse-movement touchscreen-update))
+          t)
+         ;; switch-frame
+         ((eq new-event-type 'switch-frame)
+          t) ;; or nil?
+         ;; Unknown event
+         (t
+          nil)))))
 
 ;;;;; Key Modifiers
 
@@ -1380,49 +1543,11 @@ If shift is not pressed, return the base key-type."
         (when (integerp pos)
           (get-text-property pos 'vkbd-key-object))))))
 
-
-(defun vkbd-text-keyboard-translate-event (keyboard _prompt event)
-  (when-let* ((keyobj (vkbd-text-keyboard-key-object-at-event event))
-              (key-type (vkbd-key-object-to-key-type keyobj keyboard)))
-    (vkbd-log "Translate Event: keyobj=%s key-type=%s"
-              (vkbd-key-object-id keyobj) key-type)
-    (cond
-     ;; Down event
-     ((memq (car-safe event) '(down-mouse-1 touchscreen-begin))
-      ;; Update key state
-      (vkbd-set-key-object-pressed keyobj t)
-      ;; Wait for up event
-      (while
-          (let* ((new-event (vkbd-read-event-silent))
-                 (new-event-type (car-safe new-event)))
-            (cond
-             ;; End of key press
-             ((memq new-event-type '(mouse-1 drag-mouse-1 touchscreen-end))
-              nil)
-             ;; Movement
-             ((memq new-event-type '(mouse-movement touchscreen-update))
-              t)
-             ;; switch-frame
-             ((eq new-event-type 'switch-frame)
-              t) ;; or nil?
-             ;; Unknown event
-             (t
-              nil))))
-      ;; Update key state
-      (vkbd-set-key-object-pressed keyobj nil)
-      ;; Send events & update modifiers state
-      (vkbd-select-parent-frame)
-      (apply #'vector(vkbd-keyboard-key-type-to-events keyboard key-type)))
-     ;; Up event without down event
-     ((memq (car-safe event) '(mouse-1 touchscreen-end))
-      (vkbd-select-parent-frame)
-      (apply #'vector (vkbd-keyboard-key-type-to-events keyboard key-type)))
-     ;; Unknown event
-     (t
-      ;; Return [] if EVENT occurs at a key position.
-      ;; Return nil if EVENT occurs at a non-key position.
-      []))))
-
+(defun vkbd-text-keyboard-translate-event (keyboard prompt event)
+  (vkbd-translate-keyboard-event
+   keyboard prompt event
+   ;; Identify the pressed key from the text property where the EVENT occurred.
+   #'vkbd-text-keyboard-key-object-at-event))
 
 ;;;;;; Text Keyboard Appearance
 ;;;;;;; Insert Buffer Contents
@@ -2583,6 +2708,14 @@ is used."
       (let ((old-message (current-message)))
         (prog1 (read-event)
           (vkbd-echo old-message))))))
+
+(defun vkbd-input-event-p (event)
+  (and
+   event
+   (or (integerp event)
+       (mouse-event-p event) ;; (|double-|triple-)(|down-|drag-)mouse-(1|2|3)
+       (memq (car-safe event)
+             '(touchscreen-begin touchscreen-update touchscreen-end)))))
 
 ;;;;;; Input Event Coordinates
 
