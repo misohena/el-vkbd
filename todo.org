@@ -3,6 +3,9 @@
 #+AUTHOR: AKIYAMA Kouhei
 
 * Inbox
+** TODO redirect-frame-focusを使うかどうか
+使った方が安定する気がする。
+
 ** TODO 修飾キーの適用順を統一する必要はあるのか
 例えばS-C-dとC-S-dの結果が変わる。S-C-dの結果は#x2000044になってDが挿入されるが、C-S-dは#x2000004になってdelete-charになる。
 S-C-pとC-S-pも同様にPが打たれるかShiftを押しながらprevious-lineになるかが違う。
@@ -570,3 +573,24 @@ ATOKでもモードさえ切り替えればアルファベットや記号を入�
 *修飾キーとの兼ね合いを考える必要がある。* 現状では、C-を押した後IMEのアルファベットを押してもそれにC-は適応されない。これを実現するにはC-が押されて解放された後にさらに次のキー入力までread-eventで待つ必要がある(modifier-bar-modeはこれをやっている)。
 
 vkbd-layout-special-keys-onlyを追加した。
+
+** DONE text-conversion-styleを制御する？
+CLOSED: [2025-11-24 Mon 21:54]
+Androidで他のキーボード(IM)と併用したときに修飾キーが効かないことがある。
+
+原因は text-conversion-style (もしくはoverriding-text-conversion-style)。
+バッファのtext-conversionが有効(tもしくはaction)だとIMからの入力は直接バッファに挿入され、その挿入の詳細はtext-conversion-*変数に格納された上でtext-conversionイベントが発生する。input-decode-mapが介在する余地はない。
+
+修飾キーを適用するキーを入力するread-eventの前後でset-text-conversion-styleを呼び出してみたが、ほとんどの場合うまくいかなかった。
+
+set-text-conversion-styleが効かない原因はフレームの選択と入力フォーカスにあった。
+
+実はAndroidのEmacsでは子フレームをタッチスクリーンでタップしても子フレームに入力フォーカスが移動しない。選択フレームは変わるようなのだが、その状態で何かを入力すると親フレームに文字が入力される。select-frame-set-input-focusで明示的に入力フォーカスを与えてやると、その子フレームで入力できるようになる。タッチイベントが発生する前にswitch-frameイベントが発生し、そのときのselected-frameは親フレームで、イベント内の移動先フレームは子フレームを指す。続くtouchscreen-beginイベントでの選択フレームとカレントバッファは子フレームとkeyboard-bufferとなる。しかしその時の入力フォーカスはやはり親フレームのままなのである。
+
+その状態でtouchscreen-beginが起きたときに次のキーをread-eventで読み込むとどうなるか。親フレームでIMが有効だと親フレームの選択ウィンドウ内のバッファにテキストが直接挿入されるのである。
+
+read-eventの前に(set-text-conversion-style nil)を呼び出しても、virtual keyboardバッファのtext-conversion-styleがnilになるだけ。これは元々nilなので何の変化もない。入力フォーカスは親フレームにあり、そこにあるバッファのtext-conversion-styleがtのままであれば、やはり親フレームのバッファに直接テキストが挿入されてしまう。
+
+(window-buffer (selected-window parent-frame))をカレントバッファにして(set-text-conversion-style nil)すればうまく行った。
+
+よく見たらmodifier-bar-modeにも似たようなコードが入っていた。

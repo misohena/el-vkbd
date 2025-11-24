@@ -285,6 +285,13 @@ This function is for debugging purposes."
   "Return the frame associated with KEYBOARD."
   (vkbd-keyboard-property keyboard :frame))
 
+(defun vkbd-keyboard-target-frame (keyboard)
+  (let ((frame (vkbd-keyboard-frame keyboard)))
+    (if frame
+        (or (frame-parent frame)
+            frame)
+      (selected-frame))))
+
 ;; User Data
 
 (defun vkbd-load-keyboard-user-data (options user-data-alist)
@@ -1056,11 +1063,7 @@ Return an empty vector ([]) to cancel the input event."
                     (vkbd-keyboard-pressed-modifiers keyboard)))
 
       (unless event
-        (vkbd-log
-         "Translate Event: Waiting for the next event to apply modifiers %s"
-         (vkbd-keyboard-pressed-modifiers keyboard))
-        (setq event (vkbd-read-event-silent))
-        (vkbd-log "Translate Event: read-event=%s" event))
+        (setq event (vkbd-translate-keyboard-event--read-event keyboard)))
 
       (setq result-events
             (if-let* ((keyobj (funcall key-picker event))
@@ -1074,6 +1077,52 @@ Return an empty vector ([]) to cancel the input event."
       (setq event nil
             first nil))
     result-events))
+
+(defvar vkbd-translate-keyboard-event-control-text-conversion-style
+  (eq system-type 'android)
+  "Non-nil means ensure text-conversion-style is nil in
+`vkbd-translate-keyboard-event--read-event' function.")
+
+(defun vkbd-translate-keyboard-event--read-event (keyboard)
+  (vkbd-log "Translate Event: Waiting for event to apply modifiers %s
+    current buffer=%s
+    window=%s winbuf=%s text-conversion-style=%s
+    frame=%s focus-state=%s"
+            (vkbd-keyboard-pressed-modifiers keyboard)
+            (vkbd-keyboard-pressed-modifiers keyboard)
+            (current-buffer)
+            (selected-window) (window-buffer (selected-window))
+            (buffer-local-value 'text-conversion-style
+                                (window-buffer (selected-window)))
+            (selected-frame)
+            (frame-focus-state (selected-frame)))
+  (let ((event
+         (or
+          ;; Make sure `text-conversion-style' is nil in the target
+          ;; frame's buffer. With t or action, the IM inserts text
+          ;; directly into the buffer, causing read-event to only
+          ;; receive text-conversion events.
+          (when (and vkbd-translate-keyboard-event-control-text-conversion-style
+                     (boundp 'text-conversion-style)
+                     (boundp 'overriding-text-conversion-style)
+                     (fboundp 'set-text-conversion-style))
+
+            (when-let* ((target-frame (vkbd-keyboard-target-frame keyboard))
+                        (target-window (frame-selected-window target-frame)))
+              (with-current-buffer (window-buffer target-window)
+                (when text-conversion-style
+                  (defvar overriding-text-conversion-style)
+                  (let ((overriding-text-conversion-style nil)
+                        (old-style text-conversion-style))
+                    (unwind-protect
+                        (progn
+                          (set-text-conversion-style nil)
+                          (vkbd-read-event-silent))
+                      (set-text-conversion-style old-style)))))))
+          ;; `text-conversion-style' is not used.
+          (vkbd-read-event-silent))))
+    (vkbd-log "Translate Event: read-event=%s" event)
+    event))
 
 (defun vkbd-translate-keyboard-event--on-keyobj (keyboard
                                                  event keyobj key-type first)
