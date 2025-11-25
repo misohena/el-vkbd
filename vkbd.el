@@ -263,7 +263,7 @@ Return a object that holds all information about the keyboard."
 This function is for debugging purposes."
   (dolist (buffer (buffer-list))
     (when (vkbd-keyboard-buffer-p buffer)
-      (vkbd-delete-keyboard buffer))))
+      (vkbd-delete-keyboard (vkbd-keyboard-buffer-keyboard buffer)))))
 
 ;; Accessors
 
