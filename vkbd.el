@@ -81,6 +81,11 @@
   :prefix "vkbd-"
   :group 'vkbd)
 
+;;;; Message
+
+(defun vkbd-msg (text)
+  text)
+
 ;;;; Logging
 
 (eval-and-compile
@@ -198,7 +203,7 @@ one."
   `(plist-get (cdr ,keyboard) ,prop))
 
 (defconst vkbd-keyboard-user-data-item-names
-  '(frame-position))
+  '(frame-position layout))
 
 (defun vkbd-make-keyboard (&optional options)
   "Create a virtual keyboard (on-screen keyboard).
@@ -207,24 +212,28 @@ OPTIONS is a property list containing various settings that affect creation.
 When nil, everything is created based on default settings.
 
 Return a object that holds all information about the keyboard."
-  ;; Fix keyboard layout & style
-  (setq options (vkbd-fix-keyboard-layout options))
-  (setq options (vkbd-fix-keyboard-style options))
-
   ;; Create a frame and buffer
-  (let* ((keyboard
+  (let* ((options (copy-tree options))
+         (user-data (vkbd-load-keyboard-user-data
+                     options
+                     (mapcar (lambda (name)
+                               (cons name nil))
+                             vkbd-keyboard-user-data-item-names)))
+         (layout (or (vkbd-resolve-keyboard-layout-spec
+                      (alist-get 'layout user-data))
+                     (vkbd-default-keyboard-layout options)))
+         (style (vkbd-default-keyboard-style options))
+         (keyboard
           (list 'vkbd
                 :live t
                 :options options
+                :layout layout
+                :style style
                 :frame nil
                 :buffer nil
                 :pressed-modifiers nil
                 :locked-modifiers nil
-                :user-data (vkbd-load-keyboard-user-data
-                            options
-                            (mapcar (lambda (name)
-                                      (cons name nil))
-                                    vkbd-keyboard-user-data-item-names))))
+                :user-data user-data))
          (frame (vkbd-make-keyboard-frame keyboard))
          (buffer (vkbd-make-keyboard-buffer keyboard)))
 
@@ -386,9 +395,12 @@ This function is for debugging purposes."
 
 ;;;;;; Keyboard Display
 
+(defvar vkbd-prevent-keyboard-updates nil)
+
 (defun vkbd-update-keyboard-display (keyboard)
   "Update the appearance of KEYBOARD to match its state."
-  (vkbd-keyboard-style--update-keyboard keyboard))
+  (unless vkbd-prevent-keyboard-updates
+    (vkbd-keyboard-style--update-keyboard keyboard)))
 
 ;;;;;; Keyboard Events
 
@@ -444,6 +456,7 @@ dynamically bind this variable.")
 
 (defvar vkbd-keyboard-menu-map
   (let ((km (make-sparse-keymap (vkbd-msg "Keyboard Menu"))))
+    (define-key-after km [layout] '(menu-item "Layout" vkbd-set-keyboard-layout))
     (define-key-after km [close] '(menu-item "Close" vkbd-delete-keyboard))
     km))
 
@@ -451,8 +464,75 @@ dynamically bind this variable.")
   (interactive)
   (let ((vkbd-current-keyboard keyboard)
         (menu (copy-tree vkbd-keyboard-menu-map)))
+    ;; Set layout menu
+    (when-let* ((layout-menu-item (assq 'layout (cdr menu))))
+      (setf (nth 2 (cdr layout-menu-item))
+            (vkbd-make-keyboard-layout-menu keyboard)))
     ;; Open
     (popup-menu menu event)))
+
+;;;;;; Layout
+
+(defun vkbd-keyboard-layout (keyboard)
+  (vkbd-keyboard-property keyboard :layout))
+
+(defun vkbd-current-keyboard-layout-name (keyboard)
+  (let ((current-layout (vkbd-keyboard-layout keyboard)))
+    (seq-find (lambda (layout)
+                ;; TODO: Use `equal'? (current-layout may be copied)
+                (eq (vkbd-resolve-keyboard-layout-spec layout) current-layout))
+              (vkbd-layout-list))))
+
+(defun vkbd-set-keyboard-layout (keyboard new-layout-spec)
+  (interactive
+   (let ((keyboard (vkbd-guess-current-keyboard)))
+     (list keyboard
+           (vkbd-open-keyboard-layout-menu keyboard))))
+
+  (when-let* ((new-layout (vkbd-resolve-keyboard-layout-spec new-layout-spec)))
+    (let ((vkbd-prevent-keyboard-updates t))
+      (vkbd-clear-keyboard-modifier-state keyboard))
+
+    (with-current-buffer (vkbd-keyboard-buffer keyboard)
+      (vkbd-erase-keyboard-buffer-contents keyboard)
+
+      (setf (plist-get (vkbd-keyboard-property keyboard :options) :layout)
+            new-layout-spec)
+      (setf (vkbd-keyboard-property keyboard :layout)
+            new-layout)
+
+      (vkbd-make-keyboard-buffer-contents keyboard))
+
+    (vkbd-fit-keyboard-frame-size-to-buffer-contents
+     (vkbd-keyboard-options keyboard)
+     (vkbd-keyboard-frame keyboard))
+
+    ;; Save
+    (when (symbolp new-layout-spec)
+      (vkbd-set-keyboard-user-data keyboard 'layout new-layout-spec))))
+
+(defun vkbd-open-keyboard-layout-menu (keyboard)
+  (car (x-popup-menu t (vkbd-make-keyboard-layout-menu keyboard))))
+
+(defun vkbd-make-keyboard-layout-selector (keyboard new-layout)
+  (lambda () (interactive) (vkbd-set-keyboard-layout keyboard new-layout)))
+
+(defun vkbd-make-keyboard-layout-menu (keyboard)
+  (let ((current-layout (vkbd-current-keyboard-layout-name keyboard))
+        (menu (make-sparse-keymap "Select a layout")))
+    (dolist (layout (vkbd-layout-list))
+      (when (symbolp layout)
+        (define-key-after
+          menu (vector layout)
+          (list 'menu-item (symbol-name layout)
+                (vkbd-make-keyboard-layout-selector keyboard layout)
+                :button `(:toggle . ,(eq layout current-layout))))))
+    menu))
+
+;;;;;; Style
+
+(defun vkbd-keyboard-style (keyboard)
+  (vkbd-keyboard-property keyboard :style))
 
 
 ;;;;; Frame Management
@@ -1740,7 +1820,7 @@ If shift is not pressed, return the base key-type."
   (let ((options (vkbd-keyboard-options keyboard))
         (key-id 0))
     (vkbd-map-keyboard-layout-keys
-     (vkbd-default-keyboard-layout options)
+     (vkbd-keyboard-layout keyboard)
      (lambda (key-spec)
        (vkbd-insert-text-key keyboard key-spec (cl-incf key-id)))
      (lambda () ;; between columns
@@ -2220,17 +2300,24 @@ keyboards.
 Note: The modifier lock feature does not work correctly when used with
 existing keyboards.")
 
+(defconst vkbd-layout-list
+  '(vkbd-layout-10x9
+    vkbd-layout-10x7
+    vkbd-layout-11x7
+    vkbd-layout-us
+    vkbd-layout-jp
+    vkbd-layout-special-keys-only))
+
+(defun vkbd-layout-list ()
+  vkbd-layout-list)
+
 (defcustom vkbd-default-keyboard-layout 'vkbd-layout-10x7
   "Default keyboard layout to use.
 
 This can be either a symbol naming a variable that holds a layout list,
 or a layout list itself."
-  :type '(choice (const vkbd-layout-10x9)
-                 (const vkbd-layout-10x7)
-                 (const vkbd-layout-11x7)
-                 (const vkbd-layout-us)
-                 (const vkbd-layout-jp)
-                 (const vkbd-layout-special-keys-only)
+  :type `(choice ,@(mapcar (lambda (name) `(const ,name))
+                           vkbd-layout-list)
                  (symbol :tag "Variable name")
                  sexp)
   :group 'vkbd)
@@ -2257,16 +2344,6 @@ OPTIONS is a property list that may contain a `:layout' property."
   (or (vkbd-resolve-keyboard-layout-spec (plist-get options :layout))
       (vkbd-resolve-keyboard-layout-spec vkbd-default-keyboard-layout)
       vkbd-layout-10x9))
-
-(defun vkbd-fix-keyboard-layout (options)
-  "Fix the `:layout' property in OPTIONS to a concrete layout list.
-
-This function resolves the layout specification to an actual layout list
-and sets it in the `:layout' property. This prevents malfunctions that
-could occur if the layout specification (like
-`vkbd-default-keyboard-layout') changes while the keyboard is in use."
-  (plist-put (seq-copy options)
-             :layout (vkbd-default-keyboard-layout options)))
 
 (defun vkbd-map-keyboard-layout-keys (layout
                                       key-fun between-cols-fun between-rows-fun)
@@ -2332,15 +2409,6 @@ OPTIONS is a property list that may contain a `:style' property."
       vkbd-text01-style))
 ;; (vkbd-default-keyboard-style nil)
 
-(defun vkbd-fix-keyboard-style (options)
-  "Fix the `:style' property in OPTIONS to a concrete style descriptor.
-
-This prevents malfunctions if the style specification changes while
-the keyboard is in use."
-  (plist-put (seq-copy options)
-             :style (vkbd-default-keyboard-style options)))
-
-
 (defun vkbd-keyboard-style-plist (style)
   "Return the property list of the keyboard STYLE."
   (when (vkbd-concrete-keyboard-style-p style)
@@ -2354,17 +2422,13 @@ Return DEFAULT if PROP is not found."
    (plist-get (vkbd-keyboard-style-plist style) prop)
    default))
 
-(defun vkbd-keyboard-style-from-keyboard (keyboard)
-  (let ((options (vkbd-keyboard-options keyboard)))
-    (plist-get options :style)))
-
 (defun vkbd-keyboard-style-funcall (keyboard prop &optional default &rest args)
   "Call the function specified by property PROP in the KEYBOARD style.
 
 If PROP is not found or not a function, use DEFAULT instead.
 ARGS are passed to the function."
   (let ((fun (vkbd-keyboard-style-property
-              (vkbd-keyboard-style-from-keyboard keyboard) prop default)))
+              (vkbd-keyboard-style keyboard) prop default)))
     (when (functionp fun)
       (apply fun args))))
 
