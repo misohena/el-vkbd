@@ -20,12 +20,6 @@ Virtual Keyboardへのswitch-frameやその逆をinput-decode-mapで妨害でき
 ** TODO タイトルバー以外でも移動できるのはやめよう
 キーの間の隙間で移動できてしまうのはさすがに良くないと思う。
 
-** TODO メニューボタンを配置する？
-メニュー項目:
-- レイアウト切り替え
-- ウィンドウ・子フレーム・独立フレーム切り替え
-- ボトムバーの有無
-
 ** TODO タッチ操作でレイアウトを変更できるようにしたい
 先にメニューボタンが必要。
 
@@ -594,3 +588,10 @@ read-eventの前に(set-text-conversion-style nil)を呼び出しても、virtua
 (window-buffer (selected-window parent-frame))をカレントバッファにして(set-text-conversion-style nil)すればうまく行った。
 
 よく見たらmodifier-bar-modeにも似たようなコードが入っていた。
+
+** DONE メニューボタンを配置する
+CLOSED: [2025-11-25 Tue 12:43]
+想定されるメニュー項目:
+- レイアウト切り替え
+- ウィンドウ・子フレーム・独立フレーム切り替え
+- ボトムバーの有無

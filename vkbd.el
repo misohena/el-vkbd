@@ -60,9 +60,10 @@
 ;;     - `vkbd-text-key-invisible'
 ;;     - `vkbd-text-column-separator'
 ;;     - `vkbd-text-row-separator'
-;;     - `vkbd-title-bar'
-;;     - `vkbd-close-button'
-;;     - `vkbd-title-caption'
+;;     - `vkbd-text-title-bar'
+;;     - `vkbd-text-title-button'
+;;     - `vkbd-text-title-button-separator'
+;;     - `vkbd-text-title-caption'
 
 ;;; Code:
 
@@ -242,6 +243,7 @@ Return a object that holds all information about the keyboard."
 
 (defun vkbd-delete-keyboard (keyboard)
   "Delete KEYBOARD, eliminating it from use."
+  (interactive (list (vkbd-guess-current-keyboard)))
   (when (vkbd-keyboard-property keyboard :live)
     (let ((frame (vkbd-keyboard-frame keyboard)))
       (when (vkbd-frame-live-p frame)
@@ -265,7 +267,7 @@ This function is for debugging purposes."
     (when (vkbd-keyboard-buffer-p buffer)
       (vkbd-delete-keyboard (vkbd-keyboard-buffer-keyboard buffer)))))
 
-;; Accessors
+;;;;;; Accessors
 
 (defun vkbd-keyboard-live-p (keyboard)
   "Return non-nil if KEYBOARD is a keyboard which has not been deleted."
@@ -292,7 +294,7 @@ This function is for debugging purposes."
             frame)
       (selected-frame))))
 
-;; User Data
+;;;;;; User Data
 
 (defun vkbd-load-keyboard-user-data (options user-data-alist)
   (vkbd-data-storage-load
@@ -318,7 +320,7 @@ This function is for debugging purposes."
 (defun vkbd-cast-cons-numbers (value)
   (and (consp value) (numberp (car value)) (numberp (cdr value)) value))
 
-;; Key States
+;;;;;; Key States
 
 (defun vkbd-keyboard-pressed-modifiers (keyboard)
   "Return the list of currently pressed modifier keys in KEYBOARD."
@@ -382,13 +384,13 @@ This function is for debugging purposes."
     ;; Update display
     (vkbd-update-keyboard-display keyboard)))
 
-;; Keyboard Display
+;;;;;; Keyboard Display
 
 (defun vkbd-update-keyboard-display (keyboard)
   "Update the appearance of KEYBOARD to match its state."
   (vkbd-keyboard-style--update-keyboard keyboard))
 
-;; Keyboard Events
+;;;;;; Keyboard Events
 
 (defun vkbd-event-to-keyboard (event)
   "Return the keyboard object where EVENT occurred, or nil if not in a
@@ -422,6 +424,35 @@ Return a list of events corresponding to KEY-TYPE."
            (new-pressed-modifiers (cdr pair)))
       (vkbd-set-keyboard-pressed-modifiers keyboard new-pressed-modifiers)
       events)))
+
+;;;;;; Current Keyboard Object
+
+(defvar vkbd-current-keyboard nil
+  "The keyboard object that `vkbd-guess-current-keyboard' should
+preferentially return.
+When you want to clarify the keyboard object to be operated on,
+dynamically bind this variable.")
+
+(defun vkbd-guess-current-keyboard ()
+  "Return the keyboard object currently being operated on."
+  (or vkbd-current-keyboard
+      (vkbd-event-to-keyboard last-input-event)
+      (vkbd-keyboard-frame-keyboard last-event-frame)
+      (error "No virtual keyboard")))
+
+;;;;;; Menu
+
+(defvar vkbd-keyboard-menu-map
+  (let ((km (make-sparse-keymap (vkbd-msg "Keyboard Menu"))))
+    (define-key-after km [close] '(menu-item "Close" vkbd-delete-keyboard))
+    km))
+
+(defun vkbd-open-keyboard-menu (keyboard &optional event)
+  (interactive)
+  (let ((vkbd-current-keyboard keyboard)
+        (menu (copy-tree vkbd-keyboard-menu-map)))
+    ;; Open
+    (popup-menu menu event)))
 
 
 ;;;;; Frame Management
@@ -749,7 +780,7 @@ SIZE is a cons cell (WIDTH . HEIGHT) specifying the frame size in pixels."
      keyboard 'frame-position (cons (car xy) (cdr xy)))))
 
 (defcustom vkbd-keyboard-frame-keep-visible-margins
-  '(120 48 80 1000000)
+  '(200 48 80 1000000)
   "Margins to keep visible when dragging the virtual keyboard frame.
 
 These values define the minimum amount (in pixels) of the keyboard
@@ -872,10 +903,20 @@ KEYBOARD is a keyboard object."
         (unless (eq spec 'global)
           (setq-local line-spacing spec)))
       ;; Make buffer contents
-      (let ((inhibit-read-only t))
-        (vkbd-keyboard-style--insert-keyboard keyboard))
-      (goto-char (point-min)))
+      (vkbd-make-keyboard-buffer-contents keyboard))
     buffer))
+
+(defun vkbd-make-keyboard-buffer-contents (keyboard)
+  (goto-char (point-min))
+  (let ((inhibit-read-only t))
+    (vkbd-keyboard-style--insert-keyboard keyboard))
+  (goto-char (point-min)))
+
+(defun vkbd-erase-keyboard-buffer-contents (keyboard)
+  (goto-char (point-min))
+  (let ((inhibit-read-only t))
+    (vkbd-keyboard-style--erase-keyboard keyboard))
+  (goto-char (point-min)))
 
 (define-derived-mode vkbd-keyboard-buffer-mode nil "VKBD"
   "Major mode for virtual keyboard buffer.
@@ -903,7 +944,8 @@ This major mode is for internal use and is not intended for direct user use."
 
 (defun vkbd-keyboard-buffer-keyboard (buffer)
   "Return the keyboard object associated with keyboard BUFFER."
-  (buffer-local-value 'vkbd-keyboard-buffer-keyboard buffer))
+  (when buffer
+    (buffer-local-value 'vkbd-keyboard-buffer-keyboard buffer)))
 
 ;;;;;; Frame dragging
 
@@ -1611,13 +1653,15 @@ If shift is not pressed, return the base key-type."
 
 (defun vkbd-insert-text-keyboard-title (keyboard)
   (let ((options (vkbd-keyboard-options keyboard)))
-    (vkbd-insert-close-button options)
+    (vkbd-insert-text-close-button options)
+    (unless (eq (plist-get options :menu-button) 'hide)
+      (vkbd-insert-text-menu-button options))
     (let ((title (plist-get options :title)))
       (when (stringp title)
         (vkbd-insert-propertized
-         title 'face (vkbd-get-face-opt options 'vkbd-title-caption))))
+         title 'face (vkbd-get-face-opt options 'vkbd-text-title-caption))))
     (vkbd-insert-propertized
-     "\n" 'face (vkbd-get-face-opt options 'vkbd-title-bar))
+     "\n" 'face (vkbd-get-face-opt options 'vkbd-text-title-bar))
     (vkbd-insert-text-row-separator options)))
 
 (defun vkbd-on-close-button-click (event)
@@ -1626,22 +1670,69 @@ If shift is not pressed, return the base key-type."
   (when-let* ((keyboard (vkbd-event-to-keyboard event)))
     (vkbd-delete-keyboard keyboard)))
 
-(defconst vkbd-text-keyboard-close-button-caption "  x  ")
+(defun vkbd-on-menu-button-click (event)
+  (interactive "e")
+  (vkbd-log "on-menu-button-click")
+  (when-let* ((keyboard (vkbd-event-to-keyboard event)))
+    (vkbd-open-keyboard-menu keyboard event)))
 
-(defun vkbd-insert-close-button (options)
+(defconst vkbd-text-keyboard-close-button-caption "  x  ")
+(defconst vkbd-text-keyboard-menu-button-caption "  =  ")
+
+(defun vkbd-insert-text-close-button (options)
+  (vkbd-insert-text-title-button options
+                                 vkbd-text-keyboard-close-button-caption
+                                 #'vkbd-on-close-button-click
+                                 (vkbd-msg "Close")))
+
+(defun vkbd-insert-text-menu-button (options)
+  (vkbd-insert-text-title-button options
+                                 vkbd-text-keyboard-menu-button-caption
+                                 #'vkbd-on-menu-button-click
+                                 (vkbd-msg "Menu")))
+
+(defun vkbd-insert-text-title-button (options caption command help-echo)
   (vkbd-insert-propertized
-   vkbd-text-keyboard-close-button-caption
-   'face (vkbd-get-face-opt options 'vkbd-close-button)
+   caption
+   'face (vkbd-get-face-opt options 'vkbd-text-title-button)
    'pointer 'hand
+   'help-echo help-echo
    'keymap
    (let ((km (make-sparse-keymap)))
      (define-key km [down-mouse-1] #'ignore)
-     (define-key km [mouse-1] #'vkbd-on-close-button-click)
+     (define-key km [mouse-1] command)
      (define-key km [touchscreen-begin] #'ignore)
      (define-key km [touchscreen-update] #'ignore)
-     (define-key km [touchscreen-end] #'vkbd-on-close-button-click)
+     (define-key km [touchscreen-end] command)
      km))
-  (vkbd-insert-propertized " " 'keymap (make-sparse-keymap)))
+  (vkbd-insert-text-title-button-separator options))
+
+(defcustom vkbd-text-title-button-separator-width 0.25
+  "Width of spacing between buttons (horizontal spacing between buttons)."
+  :type 'float
+  :group 'vkbd-text-style)
+
+(defconst vkbd-text-title-button-separator-display 'space) ;; or "|"
+
+(defun vkbd-insert-text-title-button-separator (options)
+  (vkbd-insert-text-separator options
+                              :text-title-button-separator-width
+                              vkbd-text-title-button-separator-width
+                              vkbd-text-title-button-separator-display
+                              'vkbd-text-title-button-separator))
+
+(defun vkbd-insert-text-separator (options
+                                   width-key default-width display-spec
+                                   face)
+  (let ((width (or (plist-get options width-key) default-width)))
+    (when (and (numberp width) (> width 0))
+      (vkbd-insert-propertized
+       " "
+       'display
+       (if (stringp display-spec)
+           display-spec
+         `(space :width ,width))
+       'face (vkbd-get-face-opt options face)))))
 
 ;;;;;;; Insert Keys
 
@@ -1798,16 +1889,11 @@ lower it."
 (defconst vkbd-text-column-separator-display 'space) ;; or "|"
 
 (defun vkbd-insert-text-column-separator (options)
-  (let ((width (or (plist-get options :text-column-separator-width)
-                   vkbd-text-column-separator-width)))
-    (when (and (numberp width) (> width 0))
-      (vkbd-insert-propertized
-       " "
-       'display
-       (if (stringp vkbd-text-column-separator-display)
-           vkbd-text-column-separator-display
-         `(space :width ,width))
-       'face (vkbd-get-face-opt options 'vkbd-text-column-separator)))))
+  (vkbd-insert-text-separator options
+                              :text-column-separator-width
+                              vkbd-text-column-separator-width
+                              vkbd-text-column-separator-display
+                              'vkbd-text-column-separator))
 
 ;;;;;;; Insert Row Separator
 
@@ -1997,19 +2083,26 @@ Changing the height of this face also changes the height of keys."
   "Face for spacing between rows."
   :group 'vkbd-text-style)
 
-(defface vkbd-title-bar
+(defface vkbd-text-title-bar
   '((t (:inherit vkbd-text-keyboard)))
   "Face for title bars."
   :group 'vkbd-text-style)
 
-(defface vkbd-close-button
-  '((t (:inherit vkbd-title-bar
+(defface vkbd-text-title-button
+  '((t (:inherit vkbd-text-title-bar
                  :background "#505050")))
-  "Face for close buttons."
+  "Face for buttons on title bars."
   :group 'vkbd-text-style)
 
-(defface vkbd-title-caption
-  '((t (:inherit vkbd-title-bar
+(defface vkbd-text-title-button-separator
+  '((t (:inherit vkbd-text-title-bar
+                 :height 1.2)))
+  "Face for spacing between buttons.
+Changing the height of this face also changes the height of title bars."
+  :group 'vkbd-text-style)
+
+(defface vkbd-text-title-caption
+  '((t (:inherit vkbd-text-title-bar
                  :foreground "#c0c0c0")))
   "Face for title text."
   :group 'vkbd-text-style)

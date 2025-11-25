@@ -115,9 +115,10 @@ Text style settings:
   - `vkbd-text-key-invisible' : Invisible key (used to adjust key positions)
   - `vkbd-text-column-separator' : Spacing between columns (horizontal)
   - `vkbd-text-row-separator' : Spacing between rows (vertical)
-  - `vkbd-title-bar' : Entire title bar
-  - `vkbd-close-button' : Close button
-  - `vkbd-title-caption' : Title bar text
+  - `vkbd-text-title-bar' : Entire title bar
+  - `vkbd-text-title-button' : Title bar buttons
+  - `vkbd-text-title-button-separator' : Spacing between buttons (horizontal)
+  - `vkbd-text-title-caption' : Title bar text
 
 ** How to Adjust Size
 
