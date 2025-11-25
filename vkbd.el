@@ -777,12 +777,13 @@ The deleted frame will not be reused."
 KEYBOARD is a keyboard object.
 POSITION is a cons cell (X . Y) specifying the frame position.
 SIZE is a cons cell (WIDTH . HEIGHT) specifying the frame size in pixels."
-  (let* ((before-make-frame-hook nil)
+  (let* ((parent (selected-frame))
+         (before-make-frame-hook nil)
          (after-make-frame-functions nil)
          (frame
           (vkbd-make-frame
            (append
-            `((parent-frame . ,(selected-frame)))
+            `((parent-frame . ,parent))
             (when size
               `((width . (text-pixels . ,(car size)))
                 (height . (text-pixels . ,(cdr size)))))
@@ -792,6 +793,8 @@ SIZE is a cons cell (WIDTH . HEIGHT) specifying the frame size in pixels."
             (or (plist-get (vkbd-keyboard-options keyboard) :frame-parameters)
                 (vkbd-keyboard-frame-parameters))))))
     (set-frame-parameter frame 'vkbd-keyboard keyboard)
+
+    (redirect-frame-focus frame parent)
     frame))
 
 (defun vkbd-keyboard-frame-keyboard (frame)
@@ -920,13 +923,17 @@ visibility constraints defined by `vkbd-keyboard-frame-keep-visible-margins'."
 
 ;; Focus Control
 
-(defun vkbd-select-parent-frame (&optional frame)
-  "If FRAME has a parent frame, select it and transfer input focus to it."
+(defun vkbd-select-parent-frame ()
   (interactive)
-  (when-let* ((parent (frame-parent frame)))
+  (when-let* ((parent-frame (frame-parent nil)))
+    (select-frame-set-input-focus parent-frame t)))
+
+(defun vkbd-select-target-frame (keyboard)
+  (interactive)
+  (when-let* ((target-frame (vkbd-keyboard-target-frame keyboard)))
     ;; (vkbd-log "Select Parent Frame: (before)selected frame=%s buffer=%s"
     ;;           (selected-frame) (current-buffer))
-    (select-frame-set-input-focus parent t)
+    (select-frame-set-input-focus target-frame t)
     ;; (vkbd-log "Select Parent Frame: (after)selected frame=%s buffer=%s"
     ;;           (selected-frame) (current-buffer))
     ))
@@ -1063,6 +1070,8 @@ last move.")
                   (setq last-frame-moved-time (float-time))))))))
     (vkbd-track-drag down-event on-move :on-up on-move
                      :allow-out-of-target-p t)
+
+    (vkbd-select-parent-frame)
     moved))
 
 (defun vkbd-move-keyboard-frame-or-close-on-mouse-down (down-event)
@@ -1147,10 +1156,10 @@ Return an empty vector ([]) to cancel the input event."
      ((eq result-events 'no-conv)
       nil)
      ((null result-events)
-      (vkbd-select-parent-frame)
+      (vkbd-select-target-frame keyboard)
       [])
      ((listp result-events)
-      (vkbd-select-parent-frame)
+      (vkbd-select-target-frame keyboard)
       (setq last-input-event (car (last result-events))) ;;For context-menu-mode
       (apply #'vector result-events))
      (t
@@ -1754,7 +1763,9 @@ If shift is not pressed, return the base key-type."
   (interactive "e")
   (vkbd-log "on-menu-button-click")
   (when-let* ((keyboard (vkbd-event-to-keyboard event)))
-    (vkbd-open-keyboard-menu keyboard event)))
+    (unwind-protect
+        (vkbd-open-keyboard-menu keyboard event)
+      (vkbd-select-target-frame keyboard))))
 
 (defconst vkbd-text-keyboard-close-button-caption "  x  ")
 (defconst vkbd-text-keyboard-menu-button-caption "  =  ")
