@@ -526,7 +526,7 @@ dynamically bind this variable.")
           menu (vector layout)
           (list 'menu-item (symbol-name layout)
                 (vkbd-make-keyboard-layout-selector keyboard layout)
-                :button `(:toggle . ,(eq layout current-layout))))))
+                :button `(:radio . ,(eq layout current-layout))))))
     menu))
 
 ;;;;;; Style
