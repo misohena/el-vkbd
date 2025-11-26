@@ -1046,35 +1046,45 @@ last move.")
 
 (defun vkbd-move-keyboard-frame-on-mouse-down (down-event)
   (interactive "e")
-  (let* ((down-frame (window-frame (posn-window (event-start down-event))))
-         (down-xy (vkbd-posn-x-y-on-display (event-start down-event)))
-         (down-frame-xy (vkbd-keyboard-frame-position down-frame))
-         (moved nil)
-         (last-frame-moved-time 0.0)
-         (touch (eq (car-safe down-event) 'touchscreen-begin))
-         (on-move
-          (lambda (move-event)
-            (when (or (not touch)
-                      (>= (- (float-time) last-frame-moved-time)
-                          vkbd-frame-move-debounce-time))
-              (let* ((curr-xy (vkbd-posn-x-y-on-display (event-start move-event)))
-                     (dx (- (car curr-xy) (car down-xy)))
-                     (dy (- (cdr curr-xy) (cdr down-xy))))
-                (when (and (not moved)
-                           (> (+ (* dx dx) (* dy dy))
-                              (* double-click-fuzz double-click-fuzz)))
-                  (setq moved t))
-                (when moved
-                  (vkbd-set-keyboard-frame-position
-                   down-frame
-                   (cons (+ (car down-frame-xy) dx)
-                         (+ (cdr down-frame-xy) dy)))
-                  (setq last-frame-moved-time (float-time))))))))
-    (vkbd-track-drag down-event on-move :on-up on-move
-                     :allow-out-of-target-p t)
+  (let ((down-frame (window-frame (posn-window (event-start down-event))))
+        (buffer (window-buffer (posn-window (event-start down-event))))
+        (pos (posn-point (event-start down-event))))
+    (when (and (frame-live-p down-frame)
+               ;; If decorated, the use native title bar should be used.
+               (frame-parameter down-frame 'undecorated)
+               (buffer-live-p buffer)
+               (integerp pos)
+               (ignore-errors
+                 (get-text-property pos 'vkbd-draggable buffer)))
 
-    (vkbd-select-parent-frame)
-    moved))
+      (let* ((down-xy (vkbd-posn-x-y-on-display (event-start down-event)))
+             (down-frame-xy (vkbd-keyboard-frame-position down-frame))
+             (moved nil)
+             (last-frame-moved-time 0.0)
+             (touch (eq (car-safe down-event) 'touchscreen-begin))
+             (on-move
+              (lambda (move-event)
+                (when (or (not touch)
+                          (>= (- (float-time) last-frame-moved-time)
+                              vkbd-frame-move-debounce-time))
+                  (let* ((curr-xy (vkbd-posn-x-y-on-display (event-start move-event)))
+                         (dx (- (car curr-xy) (car down-xy)))
+                         (dy (- (cdr curr-xy) (cdr down-xy))))
+                    (when (and (not moved)
+                               (> (+ (* dx dx) (* dy dy))
+                                  (* double-click-fuzz double-click-fuzz)))
+                      (setq moved t))
+                    (when moved
+                      (vkbd-set-keyboard-frame-position
+                       down-frame
+                       (cons (+ (car down-frame-xy) dx)
+                             (+ (cdr down-frame-xy) dy)))
+                      (setq last-frame-moved-time (float-time))))))))
+        (vkbd-track-drag down-event on-move :on-up on-move
+                         :allow-out-of-target-p t)
+
+        (vkbd-select-parent-frame)
+        moved))))
 
 (defun vkbd-move-keyboard-frame-or-close-on-mouse-down (down-event)
   (interactive "e")
@@ -1750,9 +1760,13 @@ If shift is not pressed, return the base key-type."
     (let ((title (plist-get options :title)))
       (when (stringp title)
         (vkbd-insert-propertized
-         title 'face (vkbd-get-face-opt options 'vkbd-text-title-caption))))
+         title
+         'face (vkbd-get-face-opt options 'vkbd-text-title-caption)
+         'vkbd-draggable t)))
     (vkbd-insert-propertized
-     "\n" 'face (vkbd-get-face-opt options 'vkbd-text-title-bar))
+     "\n"
+     'face (vkbd-get-face-opt options 'vkbd-text-title-bar)
+     'vkbd-draggable t)
     (vkbd-insert-text-row-separator options)))
 
 (defun vkbd-on-close-button-click (event)
