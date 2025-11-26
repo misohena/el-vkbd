@@ -219,9 +219,11 @@ Return a object that holds all information about the keyboard."
                      (mapcar (lambda (name)
                                (cons name nil))
                              vkbd-keyboard-user-data-item-names)))
-         (layout (or (vkbd-resolve-keyboard-layout-spec
-                      (alist-get 'layout user-data))
-                     (vkbd-default-keyboard-layout options)))
+         (layout
+          (or
+           (vkbd-resolve-keyboard-layout-spec (plist-get options :layout))
+           (vkbd-resolve-keyboard-layout-spec (alist-get 'layout user-data))
+           (vkbd-default-keyboard-layout options)))
          (style (vkbd-default-keyboard-style options))
          (keyboard
           (list 'vkbd
@@ -2312,8 +2314,8 @@ Note: The modifier lock feature does not work correctly when used with
 existing keyboards.")
 
 (defconst vkbd-layout-list
-  '(vkbd-layout-10x9
-    vkbd-layout-10x7
+  '(vkbd-layout-10x7
+    vkbd-layout-10x9
     vkbd-layout-11x7
     vkbd-layout-us
     vkbd-layout-jp
@@ -2352,9 +2354,9 @@ LAYOUT can be a symbol (variable name) or a list."
   "Return the default layout list to use.
 
 OPTIONS is a property list that may contain a `:layout' property."
-  (or (vkbd-resolve-keyboard-layout-spec (plist-get options :layout))
+  (or (vkbd-resolve-keyboard-layout-spec (plist-get options :default-layout))
       (vkbd-resolve-keyboard-layout-spec vkbd-default-keyboard-layout)
-      vkbd-layout-10x9))
+      vkbd-layout-10x7))
 
 (defun vkbd-map-keyboard-layout-keys (layout
                                       key-fun between-cols-fun between-rows-fun)
