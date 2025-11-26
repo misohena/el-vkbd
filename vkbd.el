@@ -252,18 +252,28 @@ Return a object that holds all information about the keyboard."
 
 (defun vkbd-delete-keyboard (keyboard)
   "Delete KEYBOARD, eliminating it from use."
+  (vkbd-delete-keyboard--internal keyboard 'external))
+
+(defun vkbd-delete-keyboard--internal (keyboard reason)
+  "Delete KEYBOARD, eliminating it from use."
   (interactive (list (vkbd-guess-current-keyboard)))
-  (when (vkbd-keyboard-property keyboard :live)
+  (vkbd-log "Life Cycle: vkbd-delete-keyboard reason=%s kbd-buffer=%s frame=%s"
+            reason
+            (vkbd-keyboard-buffer keyboard)
+            (vkbd-keyboard-frame keyboard))
+  (unless (vkbd-keyboard-property keyboard :deleted)
+    ;; Mark as killed
+    (setf (vkbd-keyboard-property keyboard :deleted) t)
     ;; Delete container
     (vkbd-delete-keyboard-container keyboard)
     ;; Delete buffer
-    (let ((buffer (vkbd-keyboard-buffer keyboard)))
-      (when (buffer-live-p buffer)
+    (when-let* ((buffer (vkbd-keyboard-buffer keyboard)))
+      (setf (vkbd-keyboard-property keyboard :buffer) nil) ;; Prevent re-entry
+      (when (and (not (eq reason 'kill-buffer-hook))
+                 (buffer-live-p buffer))
         (kill-buffer buffer)))
     ;; Save user data
-    (vkbd-save-keyboard-user-data keyboard)
-    ;; Mark as killed
-    (setf (vkbd-keyboard-property keyboard :live) nil)))
+    (vkbd-save-keyboard-user-data keyboard)))
 
 (defun vkbd-delete-all-keyboards ()
   "Forcefully delete all keyboard objects.
@@ -590,7 +600,7 @@ dynamically bind this variable.")
   (vkbd-keyboard-property keyboard :style))
 
 
-;;;;; Keyboard Container
+;;;;; Keyboard Containers
 
 ;; A keyboard container is a frame or window used to display the
 ;; keyboard buffer.
@@ -613,6 +623,7 @@ dynamically bind this variable.")
   (car vkbd-keyboard-container-type-list))
 
 (defun vkbd-make-keyboard-container (keyboard)
+  (vkbd-log "Container: Make %s" (vkbd-keyboard-container-type keyboard))
   (pcase (vkbd-keyboard-container-type keyboard)
     ('child-frame
      (vkbd-make-keyboard-container--child-frame keyboard))
@@ -622,6 +633,7 @@ dynamically bind this variable.")
      (vkbd-make-keyboard-container--window keyboard))))
 
 (defun vkbd-delete-keyboard-container (keyboard)
+  (vkbd-log "Container: Delete %s" (vkbd-keyboard-container-type keyboard))
   (pcase (vkbd-keyboard-container-type keyboard) ;; If nil, do nothing
     ('child-frame
      (vkbd-delete-keyboard-container--child-frame keyboard))
@@ -648,7 +660,7 @@ dynamically bind this variable.")
     ('window
      (vkbd-select-input-target--window keyboard))))
 
-;; Child Frame
+;;;;;; Child Frame
 
 (defun vkbd-make-keyboard-container--child-frame (keyboard)
   (let* ((selected-frame (selected-frame))
@@ -667,7 +679,7 @@ dynamically bind this variable.")
 (defun vkbd-delete-keyboard-container--child-frame (keyboard)
   (vkbd-delete-keyboard-container--frame keyboard))
 
-;; Independent Frame
+;;;;;; Independent Frame
 
 (defun vkbd-make-keyboard-container--independent-frame (keyboard)
   (vkbd-make-keyboard-container--frame keyboard nil))
@@ -675,7 +687,7 @@ dynamically bind this variable.")
 (defun vkbd-delete-keyboard-container--independent-frame (keyboard)
   (vkbd-delete-keyboard-container--frame keyboard))
 
-;; Frame Common
+;;;;;; Frame Common
 
 (defun vkbd-make-keyboard-container--frame (keyboard parent-frame)
   (let ((frame (vkbd-make-keyboard-frame keyboard parent-frame)))
@@ -693,27 +705,31 @@ dynamically bind this variable.")
 
     (when parent-frame
       (redirect-frame-focus frame parent-frame))
+
+    (vkbd-start-window-deletion-detection)
     frame))
 
 (defun vkbd-delete-keyboard-container--frame (keyboard)
-  (let ((frame (vkbd-keyboard-frame keyboard)))
-    (when (vkbd-frame-live-p frame)
-      ;; Deselect FRAME and remove input focus from it.
-      ;; (削除した後の選択フレームがFRAMEであってはならない。
-      ;; 直後のmake-keyboard-container時にFRAMEの子フレームを作ってしま
-      ;; う可能性があるから)
-      (vkbd-select-target-frame keyboard)
+  (when-let* ((frame (vkbd-keyboard-frame keyboard)))
+    ;; Deselect FRAME and remove input focus from it.
+    ;; (削除した後の選択フレームがFRAMEであってはならない。
+    ;; 直後のmake-keyboard-container時にFRAMEの子フレームを作ってしま
+    ;; う可能性があるから)
+    (vkbd-select-target-frame keyboard)
 
+    (setf (vkbd-keyboard-property keyboard :frame) nil) ;; Prevent re-entry
+
+    (when (vkbd-frame-live-p frame)
       ;; Disconnect the KEYBOARD buffer and frame.
       (set-window-dedicated-p (frame-root-window frame) nil)
 
       ;; Disconnect KEYBOARD and frame.
       (set-frame-parameter frame 'vkbd-keyboard nil)
-      (setf (vkbd-keyboard-property keyboard :frame) nil)
 
       ;; Delete frame.
       ;; Note: The buffer associated with the dedicated window is
       ;; deleted at this point.
+      ;; Note: `vkbd-on-window-change' may be called.
       (vkbd-delete-frame frame))))
 
 (defun vkbd-fit-keyboard-container-to-buffer-contents--frame (keyboard)
@@ -739,7 +755,7 @@ dynamically bind this variable.")
               (set-buffer buffer))))))))
 
 
-;; Window
+;;;;;; Window
 
 (defun vkbd-make-keyboard-container--window (keyboard)
   (let ((window (display-buffer-in-side-window (vkbd-keyboard-buffer keyboard)
@@ -749,14 +765,17 @@ dynamically bind this variable.")
       (set-window-parameter window 'no-delete-other-windows t)
       (set-window-dedicated-p window t)
 
-      (fit-window-to-buffer window))))
+      (fit-window-to-buffer window)
+
+      (vkbd-start-window-deletion-detection))))
 
 (defun vkbd-delete-keyboard-container--window (keyboard)
-  (let ((window (vkbd-keyboard-property keyboard :window)))
+  (when-let* ((window (vkbd-keyboard-property keyboard :window)))
+    (setf (vkbd-keyboard-property keyboard :window) nil) ;; Prevent re-entry
     (when (window-live-p window)
       (set-window-dedicated-p window nil)
-      (delete-window window)
-      (setf (vkbd-keyboard-property keyboard :window) nil))))
+      ;; Note: `vkbd-on-window-change' may be called.
+      (delete-window window))))
 
 (defun vkbd-fit-keyboard-container-to-buffer-contents--window (keyboard)
   (let ((window (vkbd-keyboard-property keyboard :window)))
@@ -790,7 +809,61 @@ dynamically bind this variable.")
                    (not (eq buffer (vkbd-keyboard-buffer keyboard))))
           (set-buffer buffer))))))
 
-;; Keyboard Container Type Menu
+;;;;;; Window Deletion Detection
+
+(defun vkbd-start-window-deletion-detection ()
+  "Start window deletion detection.
+Install global hooks for monitoring."
+  (vkbd-log "Window Deletion Detection: Start")
+  (add-hook 'window-configuration-change-hook #'vkbd-on-window-change)
+  (add-hook 'after-delete-frame-functions #'vkbd-on-window-change))
+
+(defun vkbd-stop-window-deletion-detection ()
+  "Stop window deletion detection.
+Uninstall global hooks."
+  (vkbd-log "Window Deletion Detection: Stop")
+  (remove-hook 'window-configuration-change-hook #'vkbd-on-window-change)
+  (remove-hook 'after-delete-frame-functions #'vkbd-on-window-change))
+
+(defun vkbd-on-window-change (&rest _args)
+  "Function called when window configuration changes.
+
+Called by the following global hooks (with the arguments shown in parentheses):
+
+  - `window-configuration-change-hook' ()
+  - `after-delete-frame-functions' (frame)"
+  (vkbd-log "Window Deletion Detection: on-window-change current-frame=%s"
+            (selected-frame))
+  (when (zerop (vkbd-delete-invalid-window-keyboards))
+    ;; No need to detect window deletion anymore
+    (vkbd-stop-window-deletion-detection)))
+
+(defun vkbd-delete-invalid-window-keyboards ()
+  "Delete all keyboard objects whose window has been deleted.
+
+This function checks all keyboard buffers and deletes keyboard objects
+that no longer have a valid window displaying them."
+  (let ((num-valid-keyboards 0))
+    (dolist (buffer (buffer-list))
+      (when-let* ((keyboard (vkbd-keyboard-buffer-keyboard buffer)))
+        (if (or
+             ;; そもそもウィンドウが関連付けられていない
+             ;; (おそらくcontainer-type切り替え中)
+             (and (null (vkbd-keyboard-frame keyboard))
+                  (null (vkbd-keyboard-property keyboard :window)))
+             ;; どこかのウィンドウに表示されている。
+             (get-buffer-window buffer t)
+             ;; container-type=windowの場合、ウィンドウが生きていれば
+             ;; 一応OKとする。
+             ;; which-key-modeのサイドバーが被ると一時的に消えてしまう。
+             ;; その時に削除されると困るので。
+             (window-live-p (vkbd-keyboard-property keyboard :window)))
+            (cl-incf num-valid-keyboards)
+          (vkbd-delete-keyboard--internal keyboard 'invalid-window))))
+    num-valid-keyboards))
+
+
+;;;;;; Keyboard Container Type Menu
 
 (defun vkbd-read-keyboard-container-type-from-menu (keyboard)
   (car (x-popup-menu t (vkbd-make-keyboard-container-type-menu keyboard))))
@@ -1270,8 +1343,19 @@ KEYBOARD is a keyboard object."
         (unless (eq spec 'global)
           (setq-local line-spacing spec)))
       ;; Make buffer contents
-      (vkbd-make-keyboard-buffer-contents keyboard))
+      (vkbd-make-keyboard-buffer-contents keyboard)
+
+      ;; Add kill-buffer-hook
+      (add-hook 'kill-buffer-hook
+                #'vkbd-keyboard-buffer-on-before-buffer-kill nil t))
     buffer))
+
+(defun vkbd-keyboard-buffer-on-before-buffer-kill ()
+  (vkbd-log "Life Cycle: on-before-buffer-kill current-buffer=%s"
+            (current-buffer))
+  (when-let* ((keyboard (vkbd-keyboard-buffer-keyboard (current-buffer))))
+    (setq-local vkbd-keyboard-buffer-keyboard nil) ;; Prevent re-entry
+    (vkbd-delete-keyboard--internal keyboard 'kill-buffer-hook)))
 
 (defun vkbd-make-keyboard-buffer-contents (keyboard)
   (goto-char (point-min))
@@ -1363,11 +1447,6 @@ last move.")
 
         (vkbd-select-parent-frame)
         moved))))
-
-(defun vkbd-move-keyboard-frame-or-close-on-mouse-down (down-event)
-  (interactive "e")
-  (unless (vkbd-move-keyboard-frame-on-mouse-down down-event)
-    (vkbd-delete-frame (window-frame (posn-window (event-start down-event))))))
 
 ;;;;;; Buffer Events
 
@@ -2050,7 +2129,7 @@ If shift is not pressed, return the base key-type."
   (interactive "e")
   (vkbd-log "on-close-button-click")
   (when-let* ((keyboard (vkbd-event-to-keyboard event)))
-    (vkbd-delete-keyboard keyboard)))
+    (vkbd-delete-keyboard--internal keyboard 'close-button)))
 
 (defun vkbd-on-menu-button-click (event)
   (interactive "e")
