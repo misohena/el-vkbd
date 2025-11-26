@@ -722,7 +722,21 @@ dynamically bind this variable.")
    (vkbd-keyboard-frame keyboard)))
 
 (defun vkbd-select-input-target--frame (keyboard)
-  (vkbd-select-target-frame keyboard))
+  (let ((target-frame (vkbd-select-target-frame keyboard)))
+    ;; Windowsでは上(select-frame-set-input-focus)だけでカレントバッファ
+    ;; も入力対象バッファに移るが、Androidではselected-frameだけ切り替わっ
+    ;; てカレントバッファは変わらない。
+    ;;
+    ;; `vkbd-select-input-target--window'でも説明しているように
+    ;; カレントバッファも切り替えないとコマンドの解決がうまくいかない。
+    ;;
+    ;; 仕方ないのでカレントバッファも強制的に切り替える。
+    (when target-frame
+      (let ((window (frame-selected-window target-frame)))
+        (when (window-live-p window)
+          (let ((buffer (window-buffer window)))
+            (when (buffer-live-p buffer)
+              (set-buffer buffer))))))))
 
 
 ;; Window
@@ -1196,12 +1210,13 @@ visibility constraints defined by `vkbd-keyboard-frame-keep-visible-margins'."
 (defun vkbd-select-target-frame (keyboard)
   (interactive)
   (when-let* ((target-frame (vkbd-keyboard-target-frame keyboard)))
-    ;; (vkbd-log "Select Parent Frame: (before)selected frame=%s buffer=%s"
-    ;;           (selected-frame) (current-buffer))
+    (vkbd-log "Select Parent Frame: (before)selected frame=%s buffer=%s"
+              (selected-frame) (current-buffer))
     (select-frame-set-input-focus target-frame t)
-    ;; (vkbd-log "Select Parent Frame: (after)selected frame=%s buffer=%s"
-    ;;           (selected-frame) (current-buffer))
-    ))
+    (vkbd-log "Select Parent Frame: (after)selected frame=%s buffer=%s"
+              (selected-frame) (current-buffer))
+    ;; Return target-frame
+    target-frame))
 
 
 ;;;;; Keyboard Buffers
