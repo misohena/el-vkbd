@@ -284,11 +284,15 @@ This function is for debugging purposes."
 
 ;;;;;; Accessors
 
+(defun vkbd-keyboard-p (object)
+  (and (consp object) (eq (car object) 'vkbd)))
+
 (defun vkbd-keyboard-live-p (keyboard)
   "Return non-nil if KEYBOARD is a keyboard which has not been deleted."
   ;; (and (buffer-live-p (vkbd-keyboard-buffer keyboard))
   ;;      (vkbd-frame-live-p (vkbd-keyboard-frame keyboard)))
-  (not (vkbd-keyboard-property keyboard :deleted)))
+  (and (vkbd-keyboard-p keyboard)
+       (not (vkbd-keyboard-property keyboard :deleted))))
 
 (defun vkbd-keyboard-options (keyboard)
   "Return the options plist associated with KEYBOARD."
