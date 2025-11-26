@@ -227,7 +227,7 @@ Return a object that holds all information about the keyboard."
          (style (vkbd-default-keyboard-style options))
          (keyboard
           (list 'vkbd
-                :live t
+                :deleted nil
                 :options options
                 :layout layout
                 :style style
@@ -278,7 +278,7 @@ This function is for debugging purposes."
   "Return non-nil if KEYBOARD is a keyboard which has not been deleted."
   ;; (and (buffer-live-p (vkbd-keyboard-buffer keyboard))
   ;;      (vkbd-frame-live-p (vkbd-keyboard-frame keyboard)))
-  (vkbd-keyboard-property keyboard :live))
+  (not (vkbd-keyboard-property keyboard :deleted)))
 
 (defun vkbd-keyboard-options (keyboard)
   "Return the options plist associated with KEYBOARD."
