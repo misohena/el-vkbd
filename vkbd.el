@@ -252,11 +252,11 @@ Return a object that holds all information about the keyboard."
 
 (defun vkbd-delete-keyboard (keyboard)
   "Delete KEYBOARD, eliminating it from use."
+  (interactive (list (vkbd-guess-current-keyboard)))
   (vkbd-delete-keyboard--internal keyboard 'external))
 
 (defun vkbd-delete-keyboard--internal (keyboard reason)
   "Delete KEYBOARD, eliminating it from use."
-  (interactive (list (vkbd-guess-current-keyboard)))
   (vkbd-log "Life Cycle: vkbd-delete-keyboard reason=%s kbd-buffer=%s frame=%s"
             reason
             (vkbd-keyboard-buffer keyboard)
