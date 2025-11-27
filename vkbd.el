@@ -203,7 +203,7 @@ one."
   `(plist-get (cdr ,keyboard) ,prop))
 
 (defconst vkbd-keyboard-user-data-item-names
-  '(frame-position layout container-type))
+  '(frame-position layout container-type window-side))
 
 (defun vkbd-make-keyboard (&optional options)
   "Create a virtual keyboard (on-screen keyboard).
@@ -357,6 +357,10 @@ This function is for debugging purposes."
   "Return the current keyboard container type of KEYBOARD.
 Return nil or one of the symbols in `vkbd-keyboard-container-type-list'."
   (vkbd-keyboard-user-data keyboard 'container-type))
+
+(defun vkbd-recreate-keyboard-container (keyboard)
+  (vkbd-set-keyboard-container-type keyboard
+                                    (vkbd-keyboard-container-type keyboard)))
 
 (defun vkbd-set-keyboard-container-type (keyboard container-type)
   "Set the keyboard container type of KEYBOARD to CONTAINER-TYPE.
@@ -523,24 +527,34 @@ dynamically bind this variable.")
       '(menu-item (vkbd-msg "Layout") vkbd-set-keyboard-layout))
     (define-key-after km [container-type]
       '(menu-item (vkbd-msg "Frame Type") vkbd-set-keyboard-container-type))
+    (define-key-after km [window-side]
+      '(menu-item (vkbd-msg "Window Side") vkbd-set-keyboard-window-side
+                  :visible nil))
     (define-key-after km [close]
       '(menu-item (vkbd-msg "Close") vkbd-delete-keyboard))
     km))
 
 (defun vkbd-open-keyboard-menu (keyboard &optional event)
-  (interactive)
-  (let ((vkbd-current-keyboard keyboard)
-        (menu (copy-tree vkbd-keyboard-menu-map)))
+  (interactive
+   (list (vkbd-guess-current-keyboard)))
+  (let ((vkbd-current-keyboard keyboard))
+    (popup-menu (vkbd-make-keyboard-menu keyboard) event)))
+
+(defun vkbd-make-keyboard-menu (keyboard)
+  (let ((menu (copy-tree vkbd-keyboard-menu-map)))
     ;; Set layout menu
-    (when-let* ((layout-menu-item (assq 'layout (cdr menu))))
-      (setf (nth 2 (cdr layout-menu-item))
+    (when-let* ((menu-item (assq 'layout (cdr menu))))
+      (setf (nthcdr 3 menu-item)
             (vkbd-make-keyboard-layout-menu keyboard)))
     ;; Set container-type menu
-    (when-let* ((container-type-menu-item (assq 'container-type (cdr menu))))
-      (setf (nth 2 (cdr container-type-menu-item))
+    (when-let* ((menu-item (assq 'container-type (cdr menu))))
+      (setf (nthcdr 3 menu-item)
             (vkbd-make-keyboard-container-type-menu keyboard)))
-    ;; Open
-    (popup-menu menu event)))
+    ;; Set window-side menu
+    (when-let* ((menu-item (assq 'window-side (cdr menu))))
+      (setf (nthcdr 3 menu-item)
+            (vkbd-make-keyboard-window-side-menu keyboard)))
+    menu))
 
 ;;;;;; Layout
 
@@ -581,14 +595,15 @@ dynamically bind this variable.")
       (vkbd-set-keyboard-user-data keyboard 'layout new-layout-spec))))
 
 (defun vkbd-read-keyboard-layout-from-menu (keyboard)
-  (car (x-popup-menu t (vkbd-make-keyboard-layout-menu keyboard))))
+  (car (x-popup-menu
+        t (car (vkbd-make-keyboard-layout-menu keyboard)))))
 
 (defun vkbd-make-keyboard-layout-selector (keyboard new-layout)
   (lambda () (interactive) (vkbd-set-keyboard-layout keyboard new-layout)))
 
 (defun vkbd-make-keyboard-layout-menu (keyboard)
   (let ((current-layout (vkbd-current-keyboard-layout-name keyboard))
-        (menu (make-sparse-keymap "Select a layout")))
+        (menu (make-sparse-keymap (vkbd-msg "Select a layout"))))
     (dolist (layout (vkbd-layout-list))
       (when (symbolp layout)
         (define-key-after
@@ -596,7 +611,7 @@ dynamically bind this variable.")
           (list 'menu-item (symbol-name layout)
                 (vkbd-make-keyboard-layout-selector keyboard layout)
                 :button `(:radio . ,(eq layout current-layout))))))
-    menu))
+    (list menu)))
 
 ;;;;;; Style
 
@@ -762,8 +777,9 @@ dynamically bind this variable.")
 ;;;;;; Window
 
 (defun vkbd-make-keyboard-container--window (keyboard)
-  (let ((window (display-buffer-in-side-window (vkbd-keyboard-buffer keyboard)
-                                               '((side . bottom)))))
+  (let ((window (display-buffer-in-side-window
+                 (vkbd-keyboard-buffer keyboard)
+                 (vkbd-keyboard-container--window-display-alist keyboard))))
     (when window
       (setf (vkbd-keyboard-property keyboard :window) window)
       (set-window-parameter window 'no-delete-other-windows t)
@@ -812,6 +828,63 @@ dynamically bind this variable.")
         (when (and (buffer-live-p buffer)
                    (not (eq buffer (vkbd-keyboard-buffer keyboard))))
           (set-buffer buffer))))))
+
+;; Side Window Side
+
+(defun vkbd-keyboard-container--window-display-alist (keyboard)
+  (list (cons 'side (vkbd-keyboard-window-side keyboard))))
+
+(defconst vkbd-side-window-side-list '(top left right bottom))
+
+(defun vkbd-cast-side-window-side (value)
+  (when (and value (memq value vkbd-side-window-side-list)) value))
+
+(defun vkbd-make-keyboard-window-side-selector (keyboard side)
+  (lambda () (interactive) (vkbd-set-keyboard-window-side keyboard side)))
+
+(defun vkbd-make-keyboard-window-side-menu (keyboard)
+  (list
+   (let ((km (make-sparse-keymap (vkbd-msg "Select a side"))))
+     (dolist (side vkbd-side-window-side-list)
+       (define-key-after
+         km (vector (intern (format "window-side-%s" side)))
+         (list 'menu-item
+               (symbol-name side) ;; TODO: (vkbd-msg (alist-get side dic))
+               (vkbd-make-keyboard-window-side-selector keyboard side)
+               :button
+               `(:radio . ,(eq (vkbd-keyboard-window-side keyboard) side)))))
+     km)
+   :visible (and (vkbd-keyboard-window-side-user-selectable-p keyboard)
+                 (eq (vkbd-keyboard-container-type keyboard) 'window))))
+
+(defun vkbd-read-keyboard-window-side-from-menu (keyboard)
+  (car (x-popup-menu
+        t (car (vkbd-make-keyboard-window-side-menu keyboard)))))
+
+(defun vkbd-keyboard-window-side (keyboard)
+  (let ((options (vkbd-keyboard-options keyboard)))
+    (or (vkbd-cast-side-window-side
+         (plist-get options :window-side))
+        (vkbd-cast-side-window-side
+         (vkbd-keyboard-user-data keyboard 'window-side))
+        (vkbd-cast-side-window-side
+         (plist-get options :default-window-side))
+        'bottom)))
+
+(defun vkbd-set-keyboard-window-side (keyboard side)
+  (interactive
+   (let ((keyboard (vkbd-guess-current-keyboard)))
+     (list keyboard  (vkbd-read-keyboard-window-side-from-menu keyboard))))
+  (setq side (vkbd-cast-side-window-side side))
+  (when (and side
+             (vkbd-keyboard-window-side-user-selectable-p keyboard))
+    (vkbd-set-keyboard-user-data keyboard 'window-side side)
+    (vkbd-recreate-keyboard-container keyboard)))
+
+(defun vkbd-keyboard-window-side-user-selectable-p (keyboard)
+  (let ((options (vkbd-keyboard-options keyboard)))
+    (null (vkbd-cast-side-window-side (plist-get options :window-side)))))
+
 
 ;;;;;; Window Deletion Detection
 
@@ -870,7 +943,8 @@ that no longer have a valid window displaying them."
 ;;;;;; Keyboard Container Type Menu
 
 (defun vkbd-read-keyboard-container-type-from-menu (keyboard)
-  (car (x-popup-menu t (vkbd-make-keyboard-container-type-menu keyboard))))
+  (car (x-popup-menu
+        t (car (vkbd-make-keyboard-container-type-menu keyboard)))))
 
 (defun vkbd-make-keyboard-container-type-selector (keyboard type)
   (lambda () (interactive) (vkbd-set-keyboard-container-type keyboard type)))
@@ -885,7 +959,7 @@ that no longer have a valid window displaying them."
           (list 'menu-item (symbol-name type)
                 (vkbd-make-keyboard-container-type-selector keyboard type)
                 :button `(:radio . ,(eq type current-type))))))
-    menu))
+    (list menu)))
 
 
 ;;;;; Frame Management

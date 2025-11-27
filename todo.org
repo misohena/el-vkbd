@@ -3,8 +3,19 @@
 #+AUTHOR: AKIYAMA Kouhei
 
 * Inbox
-** TODO windowをどのサイドに表示するかを選べるようにする
-window時にだけメニューに表示する。
+** TODO read-event等にadviceを仕込めないか :INPUT:
+** TODO window-toggle-side-windows(C-x w s)で削除されてしまう
+ウィンドウが削除されたらキーボードも削除するようにしたので当然。
+残すオプションも追加する？
+
+** TODO キーボードからのボタン押し下げに対応する
+container-type=windowのときに閉じるボタンをRETで押したくなる。
+
+** TODO Emacs終了時にユーザーデータを保存すべき
+現在はキーボードオブジェクトを削除するときしかユーザーデータを保存しないので、キーボードを出しっぱなしでEmacsを終了すると次回起動時に状態を復元できない。
+
+そもそも設定を変更した後にすぐに保存すべき。ただし、フレーム位置のドラッグ時は除く。
+
 ** TODO unread-command-eventsをうまく使えないか :INPUT:
 やっぱりunread-command-eventsはread_charで処理しているので、read-eventに作用する。
 
@@ -666,4 +677,8 @@ CLOSED: [2025-11-26 Wed 23:12]
 (buffer-list)で全バッファを見て、ウィンドウが生きているか確認するくらいしか手は無さそう。
 
 container-type切り替え中の削除でもフックが呼ばれるので、その時にkeyboardを削除しないように注意する必要がある。
+
+** DONE windowをどのサイドに表示するかを選べるようにする
+CLOSED: [2025-11-27 Thu 10:46]
+container-type=window時にだけメニューに表示する。
 
