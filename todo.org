@@ -3,12 +3,6 @@
 #+AUTHOR: AKIYAMA Kouhei
 
 * Inbox
-** TODO 修飾キーの適用順を統一する必要はあるのか :INPUT:
-例えばS-C-dとC-S-dの結果が変わる。S-C-dの結果は#x2000044になってDが挿入されるが、C-S-dは#x2000004になってdelete-charになる。
-S-C-pとC-S-pも同様にPが打たれるかShiftを押しながらprevious-lineになるかが違う。
-物理キーボードで打つと基本的にC-S-になる。
-M-についてはどうか。
-
 ** TODO Shift+シフトありキーを押したときにshiftで修飾しない :INPUT:
 例えば一つのキーに(?a del)を割り当てたときに、Shiftとこのキーを押すとS-<delete>を押したことになってしまう。S-<delete>の入力は諦めて<delete>だけが入力されるべき。普通の記号でも同じ問題は起きないのだろうか。
 
@@ -809,4 +803,92 @@ read-eventにadviceを仕込んで仮想キーボードへのマウスイベン�
 - 戻り値に対するchar_resolve_modifier_maskの適用
 
 switch-frameが一番心配だが、出来なくは無さそう。
+
+** DONE 修飾キーの適用順を統一する必要はあるのか :INPUT:
+CLOSED: [2025-11-28 Fri 22:31]
+例えばS-C-dとC-S-dの結果が変わる。S-C-dの結果は#x2000044になってDが挿入されるが、C-S-dは#x2000004になってdelete-charになる。
+S-C-pとC-S-pも同様にPが打たれるかShiftを押しながらprevious-lineになるかが違う。
+物理キーボードで打つと基本的にC-S-になる。
+M-についてはどうか。
+
+慣例ではアルファベット順で並べるものらしい([[https://www.gnu.org/software/emacs/manual/html_node/elisp/Function-Keys.html][Function Keys (GNU Emacs Lisp Reference Manual)]])。つまりA-C-H-M-S-s-の順。これはビット順とは異なる。
+
+実際に現在処理を行っている関数:
+- [[elisp-function:vkbd-apply-modifiers]]
+- [[elisp-function:vkbd-apply-modifier-key]]
+- [[elisp-function:event-apply-modifier]]
+
+#+begin_src elisp
+(vkbd-apply-modifiers ?d '(control shift)) ;;=> 68
+(vkbd-apply-modifiers ?d '(shift control)) ;;=> 33554436
+
+(vkbd-apply-modifier-key ?d 'control) ;; => 4  ( ?\C-d )
+(vkbd-apply-modifier-key 4 'shift) ;; => 68  (?D)
+?\S-\C-d ;; => 33554436
+?\C-\S-d ;; => 33554436
+#+end_src
+
+event-apply-modifierの適用順序で結果が変わる。
+要するに、 d => +control => 4 => +shift => D の過程でcontrolが抜け落ちてしまう。
+
+modifier-bar-modeはどうしているか。tool-bar-apply-modifiers関数はなんとevent-apply-modifierを適用する順番をA-s-H-S-C-M-の順で固定している。これはビット順(22～27)。結果のプレフィックスもこの順番で付く。で、これが正しいのか正直よく分からない。
+
+event-apply-modifierを元に独自に複数修飾子に対応するバージョンを作成した方が早そう。
+
+event-apply-modifierの仕様を詳しく見て行く。
+
+■event-apply-modifierの仕様
+
+(event-apply-modifier EVENT SYMBOL LSHIFTBY PREFIX)
+
+- (numberp event)
+  - (eq symbol 'control)
+    - base-eventが64(@)～95(_)の範囲
+      => (base-event - 64) に元の修飾子と、?A～?Zのときは ?\S-\0 も適用する。
+    - その他
+      => 単にeventにLSHIFTBYを適用する。
+  - (eq symbol 'shift)
+    - ?a～?z
+      => (upcase base-event) に元の修飾子を適用する。
+    - その他
+      => 単にeventにLSHIFTBYを適用する。
+  - その他
+    => 単にeventにLSHIFTBYを適用するだけ。
+- (memq symbol (event-modifiers event))
+  => eventのまま(すでに含まれている)。
+- その他
+  => /symbol/ または (/symbol/ ...) の /symbol/ の部分に PREFIX をくっつける。
+
+これだとcontrolの適用で元の情報が失われる。従って適用順序が重要になる。その他、shift、controlの順で適用するべき。
+
+■char-resolve-modifiers関数(char_resolve_modifier_mask in character.c)の仕様
+
+ちなみに[[elisp-function:char-resolve-modifiers]]も似たようなことをする関数。
+
+(char-resolve-modifiers CHAR)
+
+※対象はASCII文字(0<=(CHAR&~MODMASK)<128)のみ。それ以外はそのまま返す。
+
+- CHARのshiftビットが立っている
+  - (CHAR&255)が ?A ～ ?Z
+    => shiftビットを消す
+  - (CHAR&255)が ?a ～ ?z
+    => shiftビットを消して、upcase
+  - (CHAR&~MODMASK)が #x20以下
+    => shiftビットを消す
+- CHARのcontrolビットが立っている
+  - (CHAR&255)が' '
+    => 文字部分とcontrolビットを消す(つまりcontrol以外の修飾ビットのみ残る)
+  - (CHAR&255)が'?'
+    => #x7f | control以外の修飾ビット
+  - (CHAR&#x5f)が ?A ～ ?Z (つまり小文字も含むアルファベット)
+    => CHAR & (#x1f | control以外の修飾ビット)
+  - (CHAR&#x7f)が ?@ ～ ?_ (大文字とその前後の記号)
+    => CHAR & (#x1f | control以外の修飾ビット)
+
+(read-event)でC-SPCを押してみると#x4000020が返ってくる所を見るとresolveされた値が返ってくるわけでは無さそう(read-charやread-char-exclusiveはわざわざchar_resolve_modifier_maskを戻り値に適用しているのだから当然か)。
+
+■実装
+
+vkbd-apply-modifiers関数を書き直した。vkbd-apply-modifier-keyは廃止。
 

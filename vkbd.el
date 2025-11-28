@@ -1893,14 +1893,111 @@ If MODIFIER-KEY is nil or invalid, return BASE-KEY unchanged."
 ;; TEST: (vkbd-apply-modifier-key 'tab 'shift) => S-tab
 ;; TEST: (vkbd-apply-modifier-key ?a nil) => 97
 
-(defun vkbd-apply-modifiers (base-key modifiers)
-  "Apply all modifier keys in MODIFIERS to BASE-KEY.
+(defmacro vkbd-character-modifier-bits (char)
+  `(logand ,char ,(logior ?\M-\0 ?\C-\0 ?\S-\0 ?\H-\0 ?\s-\0 ?\A-\0)))
+
+(defmacro vkbd-character-without-modifiers (char)
+  `(logand ,char ,(lognot (logior ?\M-\0 ?\C-\0 ?\S-\0 ?\H-\0 ?\s-\0 ?\A-\0))))
+
+(defun vkbd-apply-modifiers-to-symbol (symbol modifiers)
+  (let ((name (symbol-name symbol)))
+    (when (string-match "\\`\\(A-\\|C-\\|H-\\|M-\\|S-\\|s-\\)+\\(.+\\)\\'"
+                        name)
+      (setq name (match-string 2 name)))
+    (intern
+     (concat
+      ;; Alphabetical order (See: (info "(elisp)Function Keys"))
+      (when (memq 'alt modifiers) "A-")
+      (when (memq 'control modifiers) "C-")
+      (when (memq 'hyper modifiers) "H-")
+      (when (memq 'meta modifiers) "M-")
+      (when (memq 'shift modifiers) "S-")
+      (when (memq 'super modifiers) "s-")
+      name))))
+;; TEST: (vkbd-apply-modifiers-to-symbol 'M-C-s-down-mouse-1 '(meta hyper)) => H-M-down-mouse-1
+
+(defun vkbd-apply-modifiers-to-char (char modifiers)
+  (logior char
+          (if (memq 'alt modifiers) ?\A-\0 0) ;; 0x0400000
+          (if (memq 'super modifiers) ?\s-\0 0) ;; 0x0800000
+          (if (memq 'hyper modifiers) ?\H-\0 0) ;; 0x1000000
+          (if (memq 'shift modifiers) ?\S-\0 0) ;; 0x2000000
+          (if (memq 'control modifiers) ?\C-\0 0) ;; 0x4000000
+          (if (memq 'meta modifiers) ?\M-\0 0))) ;; 0x8000000
+
+(defun vkbd-apply-modifiers (event modifiers)
+  "Apply all modifier keys in MODIFIERS to EVENT.
 MODIFIERS is a list of modifier key symbols.
 Return the resulting modified key."
-  (dolist (modifier-key modifiers)
-    (setq base-key (vkbd-apply-modifier-key base-key modifier-key)))
-  base-key)
+  ;; References:
+  ;; - `event-apply-modifier'
+  ;; - `char-resolve-modifiers'
+  (cond
+   ((numberp event)
+    ;; Apply MODIFIERS
+    (setq event (vkbd-apply-modifiers-to-char event modifiers))
+
+    ;; Shift
+    (unless (zerop (logand event ?\S-\0))
+      (let ((base-char (vkbd-character-without-modifiers event)))
+        (cond
+         ((<= ?a base-char ?z)
+          (setq event (logand (+ event (- ?A ?a))
+                              ;; Remove shift
+                              (lognot ?\S-\0))))
+         ((<= ?A base-char ?Z)
+          (setq event (logand event
+                              ;; Remove shift
+                              (lognot ?\S-\0)))))))
+    ;; Control
+    (unless (zerop (logand event ?\C-\0))
+      (let ((base-char (vkbd-character-without-modifiers event)))
+        (cond
+         ((<= ?a base-char ?z) ;; 61(a) .. 7A(z)
+          (setq event (logior (- (+ base-char (- ?A ?a)) ?@)
+                              (logand
+                               (vkbd-character-modifier-bits event)
+                               ;; Remove control
+                               (lognot ?\C-\0)))))
+         ((<= ?A base-char ?Z) ;; 41(A) .. 5A(Z)
+          (setq event (logior (- base-char ?@)
+                              (logand
+                               (vkbd-character-modifier-bits event)
+                               ;; Remove control
+                               (lognot ?\C-\0))
+                              ;; Add shift
+                              ?\S-\0)))
+         ((<= ?@ base-char ?_) ;; 40(@) 5B([) 5C(\) 5D(]) 5E(^) 5F(_)
+          (setq event (logior (- base-char ?@)
+                              (logand
+                               (vkbd-character-modifier-bits event)
+                               ;; Remove control
+                               (lognot ?\C-\0))))))))
+    event)
+   ((symbolp event)
+    (vkbd-apply-modifiers-to-symbol event modifiers))
+   ((symbolp (car-safe event))
+    (cons
+     (vkbd-apply-modifiers-to-symbol (car event) modifiers)
+     (cdr event)))
+   (t
+    event)))
+;; TEST: (vkbd-apply-modifiers '(C-down-mouse-1 foo) '(shift)) => (S-down-mouse-1 foo)
 ;; TEST: (vkbd-apply-modifiers 'tab '(shift control)) => C-S-tab
+;; TEST: (vkbd-apply-modifiers 'tab '(control shift)) => C-S-tab
+;; TEST: (vkbd-apply-modifiers 'backspace '(meta shift control)) => C-M-S-backspace
+;; TEST: (vkbd-apply-modifiers ?  '(control)) => 67108896
+;; TEST: (vkbd-apply-modifiers ?? '(control)) => 67108927
+;; TEST: (vkbd-apply-modifiers ?0 '(control)) => 67108912
+;; TEST: (vkbd-apply-modifiers ?a '(control)) => 1
+;; TEST: (vkbd-apply-modifiers ?A '(control)) => 33554433
+;; TEST: (vkbd-apply-modifiers ?a '(control shift)) => 33554433
+;; TEST: (vkbd-apply-modifiers ?a '(control shift meta)) => 167772161
+;; TEST: (vkbd-apply-modifiers ?` '(control meta)) => 201326688
+;; TEST: (vkbd-apply-modifiers ?@ '(control meta)) => 134217728
+;; TEST: (vkbd-apply-modifiers ?\] '(control)) => 29
+;; TEST: (vkbd-apply-modifiers ?~ '(control meta)) => 201326718
+;; Compare (read-event)
 
 ;;;;; Key Types
 
@@ -2006,7 +2103,7 @@ For example:
         (push (vkbd-apply-modifiers key pressed-modifiers) folded-key-sequence)
         (setq pressed-modifiers nil)))
     (cons (nreverse folded-key-sequence) pressed-modifiers)))
-;; TEST: (vkbd-fold-key-sequence-modifiers '(?a ?b ?c shift meta return control up control) '(meta hyper)) => ((150995041 98 99 S-M-return C-up) control)
+;; TEST: (vkbd-fold-key-sequence-modifiers '(?a ?b ?c shift meta return control up control) '(meta hyper)) => ((150995041 98 99 M-S-return C-up) control)
 ;; TEST: (vkbd-fold-key-sequence-modifiers '(control ?a ?b meta ?c meta control) nil) => ((1 98 134217827) control meta)
 
 (defun vkbd-key-type-to-events (key-type initial-modifiers)
