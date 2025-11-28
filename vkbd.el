@@ -247,6 +247,9 @@ Return a object that holds all information about the keyboard."
          (plist-get options :default-container-type)
          'child-frame))
 
+    ;; Ensure global settings
+    (vkbd-global-setup)
+
     keyboard))
 ;; EXAMPLE: (vkbd-make-keyboard)
 
@@ -273,7 +276,10 @@ Return a object that holds all information about the keyboard."
                  (buffer-live-p buffer))
         (kill-buffer buffer)))
     ;; Save user data
-    (vkbd-save-keyboard-user-data keyboard)))
+    (vkbd-save-keyboard-user-data keyboard)
+
+    ;; Revert global changes if no other keyboard objects exist
+    (vkbd-auto-global-teardown)))
 
 (defun vkbd-delete-all-keyboards ()
   "Forcefully delete all keyboard objects.
@@ -281,6 +287,21 @@ This function is for debugging purposes."
   (dolist (buffer (buffer-list))
     (when (vkbd-keyboard-buffer-p buffer)
       (vkbd-delete-keyboard (vkbd-keyboard-buffer-keyboard buffer)))))
+
+;;;;;; Global Setup
+
+(defun vkbd-global-setup ()
+  (vkbd-global-setup-for-input-decode-map)
+  (vkbd-global-setup-for-read-event))
+
+(defun vkbd-global-teardown ()
+  (vkbd-log "Global Teardown")
+  (vkbd-global-teardown-for-input-decode-map)
+  (vkbd-global-teardown-for-read-event))
+
+(defun vkbd-auto-global-teardown ()
+  (unless (seq-some #'vkbd-keyboard-buffer-keyboard (buffer-list))
+    (vkbd-global-teardown)))
 
 ;;;;;; Accessors
 
@@ -1461,9 +1482,7 @@ This major mode is for internal use and is not intended for direct user use."
               display-line-numbers nil
               buffer-read-only t
               truncate-lines t
-              vkbd-keyboard-buffer-keyboard nil)
-  ;; Ensure global settings
-  (vkbd-global-setup))
+              vkbd-keyboard-buffer-keyboard nil))
 
 (defun vkbd-keyboard-buffer-p (object)
   "Return non-nil if OBJECT is a buffer in `vkbd-keyboard-buffer-mode'."
@@ -1553,13 +1572,13 @@ keyboard buffer."
                  drag-mouse-1 double-drag-mouse-1 triple-drag-mouse-1
                  touchscreen-begin touchscreen-update touchscreen-end))
 
-(defun vkbd-global-setup ()
+(defun vkbd-global-setup-for-input-decode-map ()
   ;; TODO: What to do if it's already in use.
   (dolist (event-type vkbd-translation-event-types)
     (define-key input-decode-map (vector event-type)
                 #'vkbd-translate-keyboard-buffer-event)))
 
-(defun vkbd-global-teardown ()
+(defun vkbd-global-teardown-for-input-decode-map ()
   (dolist (event-type vkbd-translation-event-types)
     (let ((vec (vector event-type)))
       (when (eq (lookup-key input-decode-map vec)
@@ -1786,6 +1805,187 @@ Return an empty vector ([]) to cancel the input event."
          ;; Unknown event
          (t
           nil)))))
+
+;;;;; Replacement for read-event, read-char, and read-char-exclusive
+
+;; `input-decode-map' is not applied to `read-event', `read-char', or
+;; `read-char-exclusive'. Therefore, we use advice to forcibly apply
+;; the translation.
+
+(defcustom vkbd-replace-read-functions t
+  "Non-nil means replace read functions to apply virtual keyboard translations.
+
+When non-nil, `read-event', `read-char', and `read-char-exclusive' are
+advised to apply virtual keyboard event translations (converting
+mouse/touch operations on the virtual keyboard to key events)."
+  :type 'boolean
+  :group 'vkbd)
+
+(defun vkbd-global-setup-for-read-event ()
+  "Install advice on read functions to apply virtual keyboard translations."
+  (when vkbd-replace-read-functions
+    (advice-add 'read-event :around #'vkbd-read-event-wrapper)
+    (advice-add 'read-char :override #'vkbd-read-char)
+    (advice-add 'read-char-exclusive :override #'vkbd-read-char-exclusive)))
+
+(defun vkbd-global-teardown-for-read-event ()
+  "Remove advice from read functions."
+  (advice-remove 'read-event #'vkbd-read-event-wrapper)
+  (advice-remove 'read-char #'vkbd-read-char)
+  (advice-remove 'read-char-exclusive #'vkbd-read-char-exclusive))
+
+(defun vkbd-read-char (&optional prompt inherit-input-method seconds)
+  "A replacement for the `read-char' that supports virtual keyboards.
+
+Mouse events for virtual keyboards are translated into the corresponding
+keystroke events."
+  (when-let* ((val (vkbd-read-filtered-event
+                    t t t prompt inherit-input-method seconds)))
+    ;; For example: (char-resolve-modifiers (logior ?a (lsh 1 25))) => ?A
+    (char-resolve-modifiers val)))
+
+(defun vkbd-read-char-exclusive (&optional prompt inherit-input-method seconds)
+  "A replacement for the `read-char-exclusive' that supports virtual keyboards.
+
+Mouse events for virtual keyboards are translated into the corresponding
+keystroke events."
+  (when-let* ((val (vkbd-read-filtered-event
+                    t t nil prompt inherit-input-method seconds)))
+    (char-resolve-modifiers val)))
+
+(defvar vkbd-read-event-wrapper--entry nil)
+(defvar vkbd-suppress-read-event-replacement nil)
+
+(defun vkbd-not-replace-read-event-p ()
+  (or vkbd-read-event-wrapper--entry
+      vkbd-suppress-read-event-replacement))
+
+(defun vkbd-read-event-from-internal (&optional
+                                      prompt inherit-input-method seconds)
+  (let ((vkbd-suppress-read-event-replacement t))
+    (read-event prompt inherit-input-method seconds)))
+
+(defun vkbd-read-event-wrapper (old-fun
+                                &optional prompt inherit-input-method seconds
+                                &rest unknown-args)
+  (if (vkbd-not-replace-read-event-p)
+      ;; Call original `read-event'
+      (apply old-fun
+             prompt inherit-input-method seconds unknown-args)
+    (let ((vkbd-read-event-wrapper--entry t)
+          event)
+      (while
+          (eq (setq event
+                    (vkbd-read-event--translete
+                     ;; Call original `read-event'
+                     (apply old-fun
+                            prompt inherit-input-method seconds unknown-args)))
+              'vkbd-retry))
+      event)))
+
+(defun vkbd-read-event--translete (event)
+  (if event
+      (let* ((current-key-remap-sequence (vector event))
+             (translated-sequence
+              (vkbd-translate-keyboard-buffer-event "")))
+        (if translated-sequence
+            ;; Translated
+            (if (and (sequencep translated-sequence)
+                     (> (length translated-sequence) 0))
+                ;; Use translated event
+                ;; TODO: Use the entire translated-sequence?
+                ;; or 0 or (1- (length ..))?
+                (aref translated-sequence 0)
+              ;; Cancel EVENT and retry
+              'vkbd-retry)
+          ;; No need to translate.
+          ;; Return EVENT
+          event))
+    ;; nil means that no input arrived within SECONDS, or some
+    ;; unknown condition.
+    ;; Return nil
+    nil))
+
+(defun vkbd-read-filtered-event (no-switch-frame
+                                 ascii-required error-nonascii
+                                 prompt inherit-input-method seconds)
+  "Emulate `read_filtered_event' function defined in lread.c.
+
+`read_filtered_event' is a function called by the `read-event',
+`read-char', and `read-char-exclusive' functions."
+  (defvar text-conversion-style)
+  (defvar overriding-text-conversion-style)
+  (defvar disable-inhibit-text-conversion)
+  (if (and ascii-required
+           (fboundp 'set-text-conversion-style)
+           (boundp 'text-conversion-style)
+           (boundp 'overriding-text-conversion-style)
+           (boundp 'disable-inhibit-text-conversion)
+           (not disable-inhibit-text-conversion))
+      (unwind-protect
+          (let ((overriding-text-conversion-style nil))
+            ;; disable_text_conversion()
+            ;; Update text conversion style
+            (set-text-conversion-style text-conversion-style)
+
+            (vkbd-read-filtered-event--loop no-switch-frame ascii-required
+                                            error-nonascii
+                                            prompt inherit-input-method seconds))
+        ;; resume_text_conversion
+        ;; Update text conversion style
+        (set-text-conversion-style text-conversion-style))
+    (vkbd-read-filtered-event--loop no-switch-frame ascii-required
+                                    error-nonascii
+                                    prompt inherit-input-method seconds)))
+
+(defun vkbd-read-filtered-event--loop (no-switch-frame
+                                       ascii-required error-nonascii
+                                       prompt inherit-input-method seconds)
+  (let ((delayed-switch-frame nil)
+        ;; Compute timeout.
+        (end-time (when (numberp seconds) (+ (float-time) seconds)))
+        val)
+
+    (while
+        (progn
+          (setq val (read-event prompt inherit-input-method
+                                (when (numberp seconds)
+                                  (max 0 (- end-time (float-time))))))
+
+          (cond
+           ((and no-switch-frame (consp val) (eq (car val) 'switch-frame))
+            (setq delayed-switch-frame val)
+            ;; Retry
+            t)
+           ((and ascii-required (not (and (numberp seconds) (null val))))
+            ;; Convert certain symbols to their ASCII equivalents.
+            (when (symbolp val)
+              (when-let* ((tem (get val 'event-symbol-element-mask))
+                          (tem1 (get (car tem) 'ascii-character)))
+                ;; Merge this symbol's modifier bits
+                ;; with the ASCII equivalent of its basic code.
+                (setq val (logior tem1 (car (cdr tem))))))
+
+            ;; If we don't have a character now, deal with it
+            ;; appropriately.
+            (if (not (fixnump val))
+                (progn
+                  (when error-nonascii
+                    (push val unread-command-events)
+                    (error "Non-character input-event"))
+                  ;; Retry
+                  t)
+              ;; Return val
+              nil))
+           (t
+            ;; Return val
+            nil))))
+    (when delayed-switch-frame
+      ;; Cannot access `unread_switch_frame' !
+      ;; unread_switch_frame = delayed_switch_frame;
+      (push delayed-switch-frame unread-command-events))
+    val))
+
 
 ;;;;; Key Modifiers
 
@@ -3383,9 +3583,9 @@ is used."
   ;; (e.g. down-mouse-1-) in echo area
   (let ((echo-keystrokes 0))
     (if not-keep-echo-area
-        (read-event)
+        (vkbd-read-event-from-internal)
       (let ((old-message (current-message)))
-        (prog1 (read-event)
+        (prog1 (vkbd-read-event-from-internal)
           (vkbd-echo old-message))))))
 
 (defun vkbd-input-event-p (event)

@@ -3,13 +3,44 @@
 #+AUTHOR: AKIYAMA Kouhei
 
 * Inbox
-** TODO read-event等にadviceを仕込めないか :INPUT:
+** TODO 修飾キーの適用順を統一する必要はあるのか :INPUT:
+例えばS-C-dとC-S-dの結果が変わる。S-C-dの結果は#x2000044になってDが挿入されるが、C-S-dは#x2000004になってdelete-charになる。
+S-C-pとC-S-pも同様にPが打たれるかShiftを押しながらprevious-lineになるかが違う。
+物理キーボードで打つと基本的にC-S-になる。
+M-についてはどうか。
+
+** TODO Shift+シフトありキーを押したときにshiftで修飾しない :INPUT:
+例えば一つのキーに(?a del)を割り当てたときに、Shiftとこのキーを押すとS-<delete>を押したことになってしまう。S-<delete>の入力は諦めて<delete>だけが入力されるべき。普通の記号でも同じ問題は起きないのだろうか。
+
+** TODO 使用できないシチュエーションについて調べる :INPUT:
+=> read系関数については「[[*Emacsのイベント読み取り関数の構造を詳しく調べる][Emacsのイベント読み取り関数の構造を詳しく調べる]]」で調べた。
+   transient.el等についてはもう少し調べる必要がある。
+
+[[https://www.gnu.org/software/emacs/manual/html_node/elisp/Reading-Input.html][Reading Input (GNU Emacs Lisp Reference Manual)]]
+- read-key-sequenceは機能しているっぽい。
+- read-event、read-char、read-char-exclusiveには効かない。
+- read-key、read-char-choiceは機能する。
+- read-multiple-choiceは正しく機能しない。 (read-event使用)(long-formの時は効く)
+- read-quoted-charは正しく機能しない。 (read-event使用)
+
+他にも:
+- transient.elやset-transient-mapが機能しない(フレーム表示時。container-type=window時は機能する) switch-frameが起きるから？
+
++こういったことについてREADME.orgに書くべき。+ その前に解決を試みる。
+
+** TODO C-gはシグナルを発するべき？ :INPUT:
+C-gで脱出できなくて困ることがある。
+先に仕様を理解する必要がある。
+
 ** TODO window-toggle-side-windows(C-x w s)で削除されてしまう
 ウィンドウが削除されたらキーボードも削除するようにしたので当然。
 残すオプションも追加する？
 
 ** TODO キーボードからのボタン押し下げに対応する
 container-type=windowのときに閉じるボタンをRETで押したくなる。
+
+** TODO 少なくともread-event系では物理キーに対する修飾キーロックできる
+read-eventを置き換えているので、全てのイベントに対して常時修飾キーを適用出来るはず。
 
 ** TODO Emacs終了時にユーザーデータを保存すべき
 現在はキーボードオブジェクトを削除するときしかユーザーデータを保存しないので、キーボードを出しっぱなしでEmacsを終了すると次回起動時に状態を復元できない。
@@ -29,12 +60,6 @@ container-type=windowのときに閉じるボタンをRETで押したくなる�
 それはうまくいかないケースがあったからなのだが、それはなんであったかもう忘れた。おそらく修飾キーがらみだと思うけど……。
 
 本当にうまく行かないのだろうか。
-
-** TODO 修飾キーの適用順を統一する必要はあるのか :INPUT:
-例えばS-C-dとC-S-dの結果が変わる。S-C-dの結果は#x2000044になってDが挿入されるが、C-S-dは#x2000004になってdelete-charになる。
-S-C-pとC-S-pも同様にPが打たれるかShiftを押しながらprevious-lineになるかが違う。
-物理キーボードで打つと基本的にC-S-になる。
-M-についてはどうか。
 
 ** TODO switch-frameイベントをできるだけ妨害したらどうなるか :INPUT:
 Virtual Keyboardへのswitch-frameやその逆をinput-decode-mapで妨害できないものか。
@@ -67,24 +92,7 @@ Hacker's KeyboardのようにFnキーを押したらレイアウト毎全部書�
 キーオブジェクトをキーボードオブジェクトが一貫して管理する必要はあるのだろうか。
 キーオブジェクトはスタイルの物なのか、それともキーボードオブジェクトの物なのか。
 
-** TODO Shift+シフトありキーを押したときにshiftで修飾しない :INPUT:
-例えば一つのキーに(?a del)を割り当てたときに、Shiftとこのキーを押すとS-<delete>を押したことになってしまう。S-<delete>の入力は諦めて<delete>だけが入力されるべき。普通の記号でも同じ問題は起きないのだろうか。
-
 ** TODO 長押しでキーリピートする :INPUT:
-** TODO 使用できないシチュエーションについて調べる :INPUT:
-[[https://www.gnu.org/software/emacs/manual/html_node/elisp/Reading-Input.html][Reading Input (GNU Emacs Lisp Reference Manual)]]
-- read-key-sequenceは機能しているっぽい。
-- read-eventには効かない。
-- read-char、read-char-exclusiveは正しく機能しない。
-- read-key、read-char-choiceは機能する。
-- read-multiple-choiceは正しく機能しない。
-- read-quoted-charは正しく機能しない。
-他にも:
-- transient.elは正しく機能しない。一時マップという手法(set-transient-mapと同じようにoverriding-terminal-local-map等を一時的に書き替えるのであれば、今のバッファで発生するイベントにしか効果が無いのは当たり前)
-- set-transient-mapも当然効かない。
-
-こういったことについてREADME.orgに書くべき。
-
 ** TODO 押しながら移動して離した場合に何か有用な働きをさせたい :INPUT:
 - 離した場所のキーだけが入力される(普通)
 - 経路のキーが全て入力される
@@ -681,4 +689,124 @@ container-type切り替え中の削除でもフックが呼ばれるので、そ
 ** DONE windowをどのサイドに表示するかを選べるようにする
 CLOSED: [2025-11-27 Thu 10:46]
 container-type=window時にだけメニューに表示する。
+
+** DONE Emacsのイベント読み取り関数の構造を詳しく調べる :INPUT:
+CLOSED: [2025-11-28 Fri 08:42]
+
+[[https://www.gnu.org/software/emacs/manual/html_node/elisp/Reading-One-Event.html][Reading One Event (GNU Emacs Lisp Reference Manual)]]
+
+コアはlread.cで定義されているread-event、read-char、read-char-exclusiveの三つ。そこからread_filtered_eventが呼ばれ(呼ぶ関数はその三つだけ)、さらにkeyboard.cのread_charに繋がっている。
+
+- lread.c
+  - (lread.c)[[elisp-function:read-event]]
+    - (minibuf.c)barf_if_interaction_inhibited read-eventで一番最初に呼ばれる関数。
+    - (lread.c)read_filtered_event(0,0,0,!inherit_input_method,seconds)(lread.c)
+  - (lread.c)[[elisp-function:read-char]]
+    - (minibuf.c)barf_if_interaction_inhibited
+    - (lread.c)read_filtered_event(1,1,1,!inherit_input_method,seconds)(lread.c)
+    - (character.c)char_resolve_modifier_mask
+  - (lread.c)[[elisp-function:read-char-exclusive]]
+    - (minibuf.c)barf_if_interaction_inhibited
+    - (lread.c)read_filtered_event(1,1,0,!inherit_input_method,seconds)(lread.c)
+    - (character.c)char_resolve_modifier_mask
+  - (lread.c)read_filtered_event(bool no_switch_frame,
+                                 bool ascii_required,
+                                 bool error_nonascii,
+                                 bool input_method,
+                                 Lisp_Object seconds)
+    - (keyboard.c)read_char
+
+細かい関数:
+
+- (minibuf.c)barf_if_interaction_inhibited :: [[elisp-variable:inhibit-interaction]]が非nilの時にシグナルを出すだけ。
+- (character.c)char_resolve_modifier_mask :: read-char系で戻り値に適用される。([[elisp-function:char-resolve-modifiers]]と同等)
+
+read_filtered_event系の次に重要なのが *read_key_sequence* 系関数。
+
+- (keyboard.c)[[elisp-function:read-key-sequence]]
+  => read_key_sequence_vs => read_key_sequence => read_char
+- (keyboard.c)[[elisp-function:read-key-sequence-vector]]
+  => read_key_sequence_vs => read_key_sequence => read_char
+
+Emacsにおけるキー入力の大半はこれが受け持っている。興味深いことにこれはread_filtered_eventを使用せず直接read_charを呼び出す。
+
+input-decode-mapの適用はread_key_sequenceで行われ、read_filtered_eventでは行われない。これが現在のvkbdが一部の状況で効かない最大の原因(他にもフレームスイッチ問題などもあるが)。
+
+その他の大半はread_key_sequenceに行き着く。
+
+- (subr.el)[[elisp-function:read-key]] => read-key-sequence-vector
+- (subr.el)[[elisp-function:read-char-choice]] => read-key, read-from-minibuffer
+- (minibuf.c)read-from-minibuffer => read_minibuf => (keyboard.c)recursive_edit_1 => command_loop => command_loop_2 => command_loop_1 => read_key_sequence
+- (minibuf.c)completing-read
+
+まれにread-eventやread-char、read-char-exclusiveを呼び出す関数もある。
+
+■主な入力関数とその依存先、現状でのvkbd使用可否(input-decode-mapの効果)
+
+| ファイル名 | 関数名                          | vkbd使用可否 | 依存先                                                        |                                           |
+|------------+---------------------------------+--------------+---------------------------------------------------------------+-------------------------------------------|
+| lread.c    | [[elisp-function:read-event]]                      | ×           | read_filtered_event => read_char                              |                                           |
+| lread.c    | [[elisp-function:read-char]]                       | ×           | read_filtered_event => read_char                              |                                           |
+| lread.c    | [[elisp-function:read-char-exclusive]]             | ×           | read_filtered_event => read_char                              |                                           |
+| subr.el    | [[elisp-function:read-key]]                        | ○           | read-key-sequence-vector                                      |                                           |
+| subr.el    | [[elisp-function:read-char-choice]]                | ○           | read-char-choice-use-read-key, read-char-choice-with-read-key | 変数read-char-choice-use-read-keyによる   |
+| subr.el    | `[[elisp-function:read-char-from-minibuffer]]      | ○           | read-from-minibuffer                                          |                                           |
+| subr.el    | `[[elisp-function:read-char-choice-with-read-key]] | ○           | read-key                                                      |                                           |
+| rmc.el     | [[elisp-function:read-multiple-choice]]            | △           | read-event, x-popup-dialog, completing-read                   | 引数long-formによる                       |
+|------------+---------------------------------+--------------+---------------------------------------------------------------+-------------------------------------------|
+| simple.el  | read-quoted-char                | ×           | read-event                                                    |                                           |
+|------------+---------------------------------+--------------+---------------------------------------------------------------+-------------------------------------------|
+| keyboard.c | [[elisp-function:read-key-sequence]]               | ○           | read_key_sequence_vs => read_key_sequence => read_char        | read_key_sequence内でinput-decode-map対応 |
+| keyboard.c | [[elisp-function:read-key-sequence-vector]]        | ○           | read_key_sequence_vs => read_key_sequence => read_char        | read_key_sequence内でinput-decode-map対応 |
+|------------+---------------------------------+--------------+---------------------------------------------------------------+-------------------------------------------|
+| minibuf.c  | read-from-minibuffer            | ○           | command_loop => read_key_sequence                             |                                           |
+| minibuf.c  | completing-read                 | ○           |                                                               |                                           |
+
+■read-event、read-char、read-char-exclusiveの違い
+
+違いはread_filtered_eventの引数の違いとその戻り値の処理。
+
+read_filtered_eventの引数:
+- bool no_switch_frame
+- bool ascii_required
+- bool error_nonascii
+- bool input_method
+- Lisp_Object seconds
+
+最初の三つが違う。
+
+| 関数                | no_switch_frame | ascii_required | error_nonascii |
+|---------------------+-----------------+----------------+----------------|
+| read-event          |               0 |              0 |              0 |
+| read-char           |               1 |              1 |              1 |
+| read-char-exclusive |               1 |              1 |              0 |
+
+read-charとread-char-exclusiveは文字コードしか返さない。文字以外のイベントが発生したときに排除して無視するか、無視せずエラーを出すかがread-char-exclusiveとread-charの違い。
+
+read-eventは全てありのままに返す。
+
+問題はswitch-frameイベントの取扱。read-charとread-char-exclusiveはno_switch_frameを1にしてswitch-frameイベントを遅延させる。遅延のさせかたに少し癖がある。no_switch_frameのとき、read_filtered_eventはswitch-frameを読み取ったらそれを関数ローカルな変数に保存しておく。そして他のイベントが正常に読み取れて正常に結果を返す直前に、ローカルな変数に保存していたswitch-frameイベントをグローバル変数unread_switch_frameに格納する。unread_switch_frameはkeyboard.cで定義されている変数。read_char内で参照する。
+
+read-charとread-char-exclusiveはdisable_text-conversionを呼んで変換を無効にする。
+
+■課題
+- (keyboard.c)read_charが何をするのか細かく知りたい。
+- マウス・タッチイベントがどのようにread_charに届くのか。
+
+** DONE read-event等にadviceを仕込めないか :INPUT:
+CLOSED: [2025-11-28 Fri 15:16]
+read-eventにadviceを仕込んで仮想キーボードへのマウスイベントを無理矢理キーイベントに変換してしまう。
+
+先にEmacsのイベント読み取り関数がどのような構造になっているのか調べるべき。
+([[*Emacsのイベント読み取り関数の構造を詳しく調べる][Emacsのイベント読み取り関数の構造を詳しく調べる]])
+
+問題はread-charやread-char-exclusiveの挙動をread-eventでエミュレートできるか。read-charやread-char-exclusiveが呼び出されたときに仮想キーボードを有効にするには、内部ではread-eventを呼んでマウスイベントを取得する必要がある。つまり、内部ではread-charやread-char-exclusiveは使えない。となると、read-eventにはないread-charやread-char-exclusiveの挙動を再現する必要が出てくる。
+
+- text-conversionの無効化と復元
+- switch-frameイベントの遅延
+- 非文字イベント発生時のエラーまたはリトライ
+- シンボルの文字コード化
+- 戻り値に対するchar_resolve_modifier_maskの適用
+
+switch-frameが一番心配だが、出来なくは無さそう。
 
