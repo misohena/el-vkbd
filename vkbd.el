@@ -983,138 +983,6 @@ that no longer have a valid window displaying them."
     (list menu)))
 
 
-;;;;; Frame Management
-
-;; Basic frame functions (with recycling mechanism):
-;; - `vkbd-make-frame'
-;; - `vkbd-delete-frame'
-;; - `vkbd-delete-all-unused-frames'
-;; - `vkbd-frame-live-p'
-
-(defconst vkbd-unmodifiable-frame-parameters
-  '(border-width)
-  "List of frame parameters that cannot be modified after frame creation.
-Attempting to modify these parameters after creation causes errors.")
-
-(defun vkbd-remove-unmodifiable-frame-parameters (frame-parameters)
-  "Remove parameters from FRAME-PARAMETERS that cannot be modified after
-frame creation."
-  (seq-remove (lambda (param-value)
-                (memq (car param-value) vkbd-unmodifiable-frame-parameters))
-              frame-parameters))
-
-(defcustom vkbd-recycle-frames t
-  "Non-nil means recycle frames instead of deleting them immediately.
-When non-nil, deleted frames are kept in a pool for potential reuse.
-When nil, frames are deleted immediately and cannot be reused."
-  :type 'boolean
-  :group 'vkbd)
-
-(defvar vkbd-unused-frames nil
-  "List of unused frames.
-This is a pool of unused frames that may be reused by `vkbd-make-frame'
-and `vkbd-get-unused-frame'.")
-
-(defun vkbd-get-unused-frame (frame-parameters)
-  "Set FRAME-PARAMETERS to an unused frame and return it.
-Return nil if there is no unused frame available for reuse."
-  (let* ((parent-frame (or (alist-get 'parent-frame frame-parameters)
-                           (selected-frame)))
-         (frame (seq-find (lambda (frame)
-                            (and frame
-                                 (frame-live-p frame)
-                                 (eq (frame-parent frame) parent-frame)
-                                 (not (frame-visible-p frame))))
-                          vkbd-unused-frames)))
-    (when frame
-      (setq vkbd-unused-frames (delq frame vkbd-unused-frames))
-      (modify-frame-parameters
-       frame (vkbd-remove-unmodifiable-frame-parameters frame-parameters))
-      frame)))
-
-(defun vkbd-make-frame (frame-parameters)
-  "Create a frame with FRAME-PARAMETERS."
-  (let ((frame (or (vkbd-get-unused-frame frame-parameters)
-                   (make-frame frame-parameters))))
-    frame))
-
-(defun vkbd-delete-frame (frame)
-  "Delete FRAME created by `vkbd-make-frame'."
-  ;; Transfor focus to other
-  (when (eq (selected-frame) frame)
-    (if-let* ((parent-frame (and (frame-live-p frame)
-                                 (frame-parent frame))))
-        (select-frame-set-input-focus parent-frame)
-      (other-frame 1)))
-
-  (if vkbd-recycle-frames
-      (vkbd-delete-frame-for-reuse frame)
-    (vkbd-delete-frame-immediately frame)))
-
-(defun vkbd-delete-frame-for-reuse (frame)
-  "Delete FRAME created by `vkbd-make-frame'.
-FRAME is saved as an unused frame and may be recycled."
-  (when (frame-live-p frame)
-    (vkbd-kill-dedicated-buffer (frame-root-window frame))
-    (redirect-frame-focus frame nil)
-
-    (make-frame-invisible frame t)
-    ;; Invisible frames can interfere with motion events, so move them
-    ;; out of the way. (Emacs 29.1 for Windows)
-    ;;(set-frame-position frame -1000 -1000)
-    (modify-frame-parameters frame '((left . (+ -1000))
-                                     (top . (+ -1000))))
-
-    (setq vkbd-unused-frames (nconc vkbd-unused-frames (list frame)))
-    (vkbd-prune-unused-frames)))
-
-(defconst vkbd-max-unused-frames-per-parent 2)
-
-(defun vkbd-prune-unused-frames ()
-  "Release unnecessary unused frames."
-  (setq vkbd-unused-frames
-        (cl-loop with parent-alist = nil
-                 for frame in vkbd-unused-frames
-                 if (and frame
-                         (frame-live-p frame)
-                         ;; max frame count per same parent
-                         (<= (cl-incf (alist-get
-                                       (frame-parent frame)
-                                       parent-alist 0))
-                             vkbd-max-unused-frames-per-parent))
-                 collect frame
-                 else do (vkbd-delete-frame-immediately frame))))
-
-(defun vkbd-kill-dedicated-buffer (window)
-  "Kill the dedicated buffer set in WINDOW."
-  (when (and window
-             (window-live-p window)
-             (window-dedicated-p window))
-    (let ((buffer (window-buffer window)))
-      (when buffer
-        (set-window-dedicated-p window nil)
-        (kill-buffer buffer)))))
-
-(defun vkbd-delete-frame-immediately (frame)
-  "Delete FRAME immediately.
-The deleted frame will not be reused."
-  (when (and frame (frame-live-p frame))
-    (vkbd-kill-dedicated-buffer (frame-root-window frame))
-    (delete-frame frame t)))
-
-(defun vkbd-delete-all-unused-frames ()
-  "Delete all unused frames immediately.
-`vkbd-unused-frames' will become nil."
-  (interactive)
-  (mapc #'vkbd-delete-frame-immediately vkbd-unused-frames)
-  (setq vkbd-unused-frames nil))
-
-(defun vkbd-frame-live-p (object)
-  "Return non-nil if OBJECT is a frame which has not been deleted."
-  (and (frame-live-p object)
-       (not (memq object vkbd-unused-frames))))
-
-
 ;;;;; Keyboard Frames
 
 (defcustom vkbd-keyboard-frame-parameters
@@ -3542,6 +3410,138 @@ is used."
 
 
 ;;;; Utilities
+
+;;;;; Frame Management
+
+;; Basic frame functions (with recycling mechanism):
+;; - `vkbd-make-frame'
+;; - `vkbd-delete-frame'
+;; - `vkbd-delete-all-unused-frames'
+;; - `vkbd-frame-live-p'
+
+(defconst vkbd-unmodifiable-frame-parameters
+  '(border-width)
+  "List of frame parameters that cannot be modified after frame creation.
+Attempting to modify these parameters after creation causes errors.")
+
+(defun vkbd-remove-unmodifiable-frame-parameters (frame-parameters)
+  "Remove parameters from FRAME-PARAMETERS that cannot be modified after
+frame creation."
+  (seq-remove (lambda (param-value)
+                (memq (car param-value) vkbd-unmodifiable-frame-parameters))
+              frame-parameters))
+
+(defcustom vkbd-recycle-frames t
+  "Non-nil means recycle frames instead of deleting them immediately.
+When non-nil, deleted frames are kept in a pool for potential reuse.
+When nil, frames are deleted immediately and cannot be reused."
+  :type 'boolean
+  :group 'vkbd)
+
+(defvar vkbd-unused-frames nil
+  "List of unused frames.
+This is a pool of unused frames that may be reused by `vkbd-make-frame'
+and `vkbd-get-unused-frame'.")
+
+(defun vkbd-get-unused-frame (frame-parameters)
+  "Set FRAME-PARAMETERS to an unused frame and return it.
+Return nil if there is no unused frame available for reuse."
+  (let* ((parent-frame (or (alist-get 'parent-frame frame-parameters)
+                           (selected-frame)))
+         (frame (seq-find (lambda (frame)
+                            (and frame
+                                 (frame-live-p frame)
+                                 (eq (frame-parent frame) parent-frame)
+                                 (not (frame-visible-p frame))))
+                          vkbd-unused-frames)))
+    (when frame
+      (setq vkbd-unused-frames (delq frame vkbd-unused-frames))
+      (modify-frame-parameters
+       frame (vkbd-remove-unmodifiable-frame-parameters frame-parameters))
+      frame)))
+
+(defun vkbd-make-frame (frame-parameters)
+  "Create a frame with FRAME-PARAMETERS."
+  (let ((frame (or (vkbd-get-unused-frame frame-parameters)
+                   (make-frame frame-parameters))))
+    frame))
+
+(defun vkbd-delete-frame (frame)
+  "Delete FRAME created by `vkbd-make-frame'."
+  ;; Transfor focus to other
+  (when (eq (selected-frame) frame)
+    (if-let* ((parent-frame (and (frame-live-p frame)
+                                 (frame-parent frame))))
+        (select-frame-set-input-focus parent-frame)
+      (other-frame 1)))
+
+  (if vkbd-recycle-frames
+      (vkbd-delete-frame-for-reuse frame)
+    (vkbd-delete-frame-immediately frame)))
+
+(defun vkbd-delete-frame-for-reuse (frame)
+  "Delete FRAME created by `vkbd-make-frame'.
+FRAME is saved as an unused frame and may be recycled."
+  (when (frame-live-p frame)
+    (vkbd-kill-dedicated-buffer (frame-root-window frame))
+    (redirect-frame-focus frame nil)
+
+    (make-frame-invisible frame t)
+    ;; Invisible frames can interfere with motion events, so move them
+    ;; out of the way. (Emacs 29.1 for Windows)
+    ;;(set-frame-position frame -1000 -1000)
+    (modify-frame-parameters frame '((left . (+ -1000))
+                                     (top . (+ -1000))))
+
+    (setq vkbd-unused-frames (nconc vkbd-unused-frames (list frame)))
+    (vkbd-prune-unused-frames)))
+
+(defconst vkbd-max-unused-frames-per-parent 2)
+
+(defun vkbd-prune-unused-frames ()
+  "Release unnecessary unused frames."
+  (setq vkbd-unused-frames
+        (cl-loop with parent-alist = nil
+                 for frame in vkbd-unused-frames
+                 if (and frame
+                         (frame-live-p frame)
+                         ;; max frame count per same parent
+                         (<= (cl-incf (alist-get
+                                       (frame-parent frame)
+                                       parent-alist 0))
+                             vkbd-max-unused-frames-per-parent))
+                 collect frame
+                 else do (vkbd-delete-frame-immediately frame))))
+
+(defun vkbd-kill-dedicated-buffer (window)
+  "Kill the dedicated buffer set in WINDOW."
+  (when (and window
+             (window-live-p window)
+             (window-dedicated-p window))
+    (let ((buffer (window-buffer window)))
+      (when buffer
+        (set-window-dedicated-p window nil)
+        (kill-buffer buffer)))))
+
+(defun vkbd-delete-frame-immediately (frame)
+  "Delete FRAME immediately.
+The deleted frame will not be reused."
+  (when (and frame (frame-live-p frame))
+    (vkbd-kill-dedicated-buffer (frame-root-window frame))
+    (delete-frame frame t)))
+
+(defun vkbd-delete-all-unused-frames ()
+  "Delete all unused frames immediately.
+`vkbd-unused-frames' will become nil."
+  (interactive)
+  (mapc #'vkbd-delete-frame-immediately vkbd-unused-frames)
+  (setq vkbd-unused-frames nil))
+
+(defun vkbd-frame-live-p (object)
+  "Return non-nil if OBJECT is a frame which has not been deleted."
+  (and (frame-live-p object)
+       (not (memq object vkbd-unused-frames))))
+
 
 ;;;;; Echo Area
 
