@@ -3,9 +3,6 @@
 #+AUTHOR: AKIYAMA Kouhei
 
 * Inbox
-** TODO Shift+シフトありキーを押したときにshiftで修飾しない :INPUT:
-例えば一つのキーに(?a del)を割り当てたときに、Shiftとこのキーを押すとS-<delete>を押したことになってしまう。S-<delete>の入力は諦めて<delete>だけが入力されるべき。普通の記号でも同じ問題は起きないのだろうか。
-
 ** TODO 使用できないシチュエーションについて調べる :INPUT:
 => read系関数については「[[*Emacsのイベント読み取り関数の構造を詳しく調べる][Emacsのイベント読み取り関数の構造を詳しく調べる]]」で調べた。
    transient.el等についてはもう少し調べる必要がある。
@@ -891,4 +888,10 @@ event-apply-modifierの仕様を詳しく見て行く。
 ■実装
 
 vkbd-apply-modifiers関数を書き直した。vkbd-apply-modifier-keyは廃止。
+
+** DONE Shift+シフトありキーを押したときにshiftで修飾しない :INPUT:
+CLOSED: [2025-11-29 Sat 13:56]
+例えば一つのキーに(?a del)を割り当てたときに、Shiftとこのキーを押すとS-<delete>を押したことになってしまう。S-<delete>の入力は諦めて<delete>だけが入力されるべき。普通の記号でも同じ問題は起きないのだろうか。
+
+結構大がかりな修正が必要になってしまった。
 

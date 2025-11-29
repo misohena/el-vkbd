@@ -481,14 +481,48 @@ specified."
     ;; Update display
     (vkbd-update-keyboard-display keyboard)))
 
+(defun vkbd-cycle-modifier-state (keyboard modifier)
+  ;; Cycle normal => pressed => lock => normal
+  (if (vkbd-keyboard-modifier-pressed-p keyboard modifier)
+      ;; Already pressed
+      (if (vkbd-keyboard-modifier-locked-p keyboard modifier)
+          ;; Unlock & Release
+          (vkbd-set-keyboard-modifier-state keyboard modifier nil nil)
+        ;; Lock
+        (vkbd-set-keyboard-modifier-state keyboard modifier t t))
+    ;; Press the MODIFIER
+    (vkbd-set-keyboard-modifier-state keyboard modifier t nil)))
+
 ;;;;;; Keyboard Display
 
-(defvar vkbd-prevent-keyboard-updates nil)
+(defvar vkbd-prevent-keyboard-updates nil) ;; t or (update . nil)
 
 (defun vkbd-update-keyboard-display (keyboard)
   "Update the appearance of KEYBOARD to match its state."
-  (unless vkbd-prevent-keyboard-updates
-    (vkbd-keyboard-style--update-keyboard keyboard)))
+  (if vkbd-prevent-keyboard-updates
+      (when (consp vkbd-prevent-keyboard-updates)
+        (setcar vkbd-prevent-keyboard-updates t))
+    (vkbd-update-keyboard-display-forced keyboard)))
+
+(defun vkbd-update-keyboard-display-forced (keyboard)
+  "Update the appearance of KEYBOARD to match its state."
+  (vkbd-keyboard-style--update-keyboard keyboard))
+
+(defmacro vkbd-delay-keyboard-display-update (keyboard &rest body)
+  (declare (indent 1) (debug (body)))
+  (let ((sym-keyboard (gensym 'keyboard)))
+    `(let ((,sym-keyboard ,keyboard)
+           (vkbd-prevent-keyboard-updates
+            ;; nil => (nil . nil)
+            ;; t => t
+            ;; (? . nil) => t
+            (if vkbd-prevent-keyboard-updates t (cons nil nil))))
+       (prog1
+           (progn
+             ,@body)
+         (when (car-safe vkbd-prevent-keyboard-updates)
+           ;; Update only if (t . nil)
+           (vkbd-update-keyboard-display-forced ,sym-keyboard))))))
 
 ;;;;;; Keyboard Events
 
@@ -497,33 +531,6 @@ specified."
 keyboard."
   ;; TODO: Use text property?
   (vkbd-keyboard-buffer-keyboard (vkbd-event-to-keyboard-buffer event)))
-
-(defun vkbd-keyboard-key-type-to-events (keyboard key-type)
-  "Convert KEY-TYPE to events, updating pressed modifiers in KEYBOARD.
-
-Return a list of events corresponding to KEY-TYPE."
-  (if-let* ((modifier (vkbd-key-type-to-simple-modifier key-type)))
-      ;; A simple modifier key was pressed (excluding C-x etc.)
-      (progn
-        ;; Cycle normal => pressed => lock => normal
-        (if (vkbd-keyboard-modifier-pressed-p keyboard modifier)
-            ;; Already pressed
-            (if (vkbd-keyboard-modifier-locked-p keyboard modifier)
-                ;; Unlock & Release
-                (vkbd-set-keyboard-modifier-state keyboard modifier nil nil)
-              ;; Lock
-              (vkbd-set-keyboard-modifier-state keyboard modifier t t))
-          ;; Press the MODIFIER
-          (vkbd-set-keyboard-modifier-state keyboard modifier t nil))
-        ;; No events
-        nil)
-    ;; Not a simple modifier key (character, special key, compound key, etc.)
-    (let* ((pair (vkbd-key-type-to-events
-                  key-type (vkbd-keyboard-pressed-modifiers keyboard)))
-           (events (car pair))
-           (new-pressed-modifiers (cdr pair)))
-      (vkbd-set-keyboard-pressed-modifiers keyboard new-pressed-modifiers)
-      events)))
 
 ;;;;;; Current Keyboard Object
 
@@ -1469,7 +1476,7 @@ PROMPT is the prompt string for the current key sequence.
 Return the translated key sequence vector, or nil if no translation is needed.
 Return an empty vector ([]) to cancel the input event."
   ;; TODO: `vkbd-text-keyboard-translate-event'や
-  ;; `vkbd-text-keyboard-key-type-at-event'との役割分担を見直したい。
+  ;; `vkbd-text-keyboard-key-object-at-event'との役割分担を見直したい。
   ;; 将来的に専用バッファ以外にもキーボードを置けるようにしたいかもしれない。
   ;; それなら処理対象イベント判別の時点で色々と変えなければならなくなる。
   (when-let* ((event (vkbd-current-key-remap-event))
@@ -1531,11 +1538,10 @@ Return an empty vector ([]) to cancel the input event."
         (setq event (vkbd-translate-keyboard-event--read-event keyboard)))
 
       (setq result-events
-            (if-let* ((keyobj (funcall key-picker event))
-                      (key-type (vkbd-key-object-to-key-type keyobj keyboard)))
+            (if-let* ((keyobj (funcall key-picker event)))
                 ;; EVENT occurred on a key
                 (vkbd-translate-keyboard-event--on-keyobj
-                 keyboard event keyobj key-type first)
+                 keyboard event keyobj first)
               ;; EVENT did not occur on a key
               (vkbd-translate-keyboard-event--off-keyobj
                keyboard event first)))
@@ -1588,11 +1594,10 @@ Return an empty vector ([]) to cancel the input event."
     (vkbd-log "Translate Event: read-event=%s" event)
     event))
 
-(defun vkbd-translate-keyboard-event--on-keyobj (keyboard
-                                                 event keyobj key-type first)
+(defun vkbd-translate-keyboard-event--on-keyobj (_keyboard event keyobj first)
   (vkbd-log
-   "Translate Event: Occurred on a key (#%s key-type=%s first=%s)"
-   (vkbd-key-object-id keyobj) key-type first)
+   "Translate Event: Occurred on a key (#%s first=%s)"
+   (vkbd-key-object-id keyobj) first)
 
   (cond
    ;; Down event
@@ -1605,8 +1610,8 @@ Return an empty vector ([]) to cancel the input event."
     (vkbd-wait-for-mouse-up-event)
     ;; Update key state
     (vkbd-set-key-object-pressed keyobj nil)
-    ;; Convert KEY-TYPE and KEYBOARD's pressed modifiers to events
-    (vkbd-keyboard-key-type-to-events keyboard key-type))
+    ;; Convert KEYOBJ and KEYBOARD's pressed modifiers to events
+    (vkbd-generate-key-object-pressed-events keyobj))
 
    ;; Up event without down event
    ;;
@@ -1617,7 +1622,7 @@ Return an empty vector ([]) to cancel the input event."
    ((memq (car-safe event) '(mouse-1
                              double-mouse-1 triple-mouse-1
                              touchscreen-end))
-    (vkbd-keyboard-key-type-to-events keyboard key-type))
+    (vkbd-generate-key-object-pressed-events keyobj))
 
    ;; Movement event => Block
    ((or (mouse-event-p event)
@@ -2106,16 +2111,6 @@ For example:
 ;; TEST: (vkbd-fold-key-sequence-modifiers '(?a ?b ?c shift meta return control up control) '(meta hyper)) => ((150995041 98 99 M-S-return C-up) control)
 ;; TEST: (vkbd-fold-key-sequence-modifiers '(control ?a ?b meta ?c meta control) nil) => ((1 98 134217827) control meta)
 
-(defun vkbd-key-type-to-events (key-type initial-modifiers)
-  "Convert KEY-TYPE to events, applying INITIAL-MODIFIERS.
-
-Return a cons cell (EVENTS . PRESSED-MODIFIERS) where:
-- EVENTS is a list of key events
-- PRESSED-MODIFIERS is the list of modifiers still pressed after conversion"
-  (vkbd-fold-key-sequence-modifiers
-   (vkbd-key-type-to-key-sequence key-type)
-   initial-modifiers))
-
 (defun vkbd-key-type-to-simple-modifier (key-type)
   (let ((key-seq (vkbd-key-type-to-key-sequence key-type)))
     (when (and (vkbd-modifier-p (car key-seq))
@@ -2196,55 +2191,59 @@ Return nil or a list in the form ([<no-mod-key-type> [<shifted-key-type>]])."
 ;; TEST: (vkbd-key-spec-properties '(:w 1.5)) => (:w 1.5)
 ;; TEST: (vkbd-key-spec-properties '(esc :w 1.5)) => (:w 1.5)
 
-(defun vkbd-key-spec-modified-key-type (key-spec pressed-modifiers)
-  "Return the key-type from KEY-SPEC with PRESSED-MODIFIERS applied.
+(defun vkbd-key-spec-modified-key-types-and-consumed-modifiers
+    (key-spec pressed-modifiers)
+  "Return KEY-SPEC\\='s key-types with PRESSED-MODIFIERS applied and list
+of consumed modifiers.
 
-If shift is in PRESSED-MODIFIERS, return the shifted key-type if available,
-otherwise return the uppercase version of the base key-type for characters.
-If shift is not pressed, return the base key-type."
-  ;; (car (vkbd-key-spec-modified-key-types-for-display key-spec pressed-modifiers)) ?
-  (let ((key-types (vkbd-key-spec-key-types key-spec)))
-    (when key-types
-      (if (memq 'shift pressed-modifiers)
-          ;; with shift
-          (or
-           ;; 2nd key-type if valid
-           (cadr key-types)
-           ;; single key-type
-           (let ((kt (car key-types)))
-             (if (integerp kt)
-                 ;; character
-                 (upcase kt) ;; TODO: Customize?
-               ;; symbol (including nil)
-               kt)))
-        ;; without shift
-        (car key-types)))))
-;; TEST: (vkbd-key-spec-modified-key-type nil nil) => nil
-;; TEST: (vkbd-key-spec-modified-key-type nil '(shift control)) => nil
-;; TEST: (vkbd-key-spec-modified-key-type ?a nil) => 97
-;; TEST: (vkbd-key-spec-modified-key-type ?a '(shift)) => 65
-;; TEST: (vkbd-key-spec-modified-key-type ?a '(shift control)) => 65
-;; TEST: (vkbd-key-spec-modified-key-type 'esc '(shift control)) => esc
-;; TEST: (vkbd-key-spec-modified-key-type '(?a :w 2) '(shift control)) => 65
-;; TEST: (vkbd-key-spec-modified-key-type '(?2 ?\") '(shift control)) => 34
+This function returns a cons cell (KEY-TYPES . CONSUMED-MODIFIERS) where:
+- KEY-TYPES is the list of key-types to display on the keytop
+- CONSUMED-MODIFIERS is the list of modifiers used for key-type switching
+
+When shift is not in PRESSED-MODIFIERS:
+  Returns the full key-types list unchanged with no consumed modifiers.
+  Both base and shifted types are displayed on the keytop.
+
+When shift is in PRESSED-MODIFIERS:
+  If a shifted-key-type exists:
+    Returns only the shifted-key-type with shift marked as consumed.
+  If no shifted-key-type exists but base is a lowercase letter (a-z):
+    Returns the uppercase version with shift marked as consumed.
+  Otherwise:
+    Returns the base-key-type unchanged with no consumed modifiers.
+
+The car of the returned KEY-TYPES list determines the actual key-type
+to be input. Consumed modifiers are tracked to prevent applying the
+same modifier twice in subsequent processing."
+  (when-let* ((key-types (vkbd-key-spec-key-types key-spec)))
+    (if (memq 'shift pressed-modifiers)
+        ;; with shift
+        (if-let* ((shifted-key-type (cadr key-types)))
+            ;; 2nd key-type is valid
+            (cons (list shifted-key-type) '(shift)) ;; Consume the shift key
+          ;; single key-type
+          (if-let* ((kt (car key-types)))
+              ;; TODO: Downcase if A ~ Z ? (Related:`vkbd-apply-modifiers')
+              (if (and (integerp kt) (<= ?a kt ?z))
+                  (cons (list (upcase kt)) '(shift)) ;; Consume the shift key
+                (cons (list kt) nil))
+            nil))
+      ;; without shift
+      (cons key-types nil))))
+;; TEST: (vkbd-key-spec-modified-key-types-and-consumed-modifiers nil nil) => nil
+;; TEST: (vkbd-key-spec-modified-key-types-and-consumed-modifiers nil '(shift control)) => nil
+;; TEST: (vkbd-key-spec-modified-key-types-and-consumed-modifiers ?a nil) => ((97))
+;; TEST: (vkbd-key-spec-modified-key-types-and-consumed-modifiers ?a '(shift)) => ((65) shift)
+;; TEST: (vkbd-key-spec-modified-key-types-and-consumed-modifiers ?a '(shift control)) => ((65) shift)
+;; TEST: (vkbd-key-spec-modified-key-types-and-consumed-modifiers 'esc '(shift control)) => ((esc))
+;; TEST: (vkbd-key-spec-modified-key-types-and-consumed-modifiers '(?a :w 2) '(shift control)) => ((65) shift)
+;; TEST: (vkbd-key-spec-modified-key-types-and-consumed-modifiers '(?2 ?\") '(shift control)) => ((34) shift)
+;; TEST: (vkbd-key-spec-modified-key-types-and-consumed-modifiers '(?2 ?\") '(control)) => ((50 34))
 
 (defun vkbd-key-spec-modified-key-types-for-display (key-spec pressed-modifiers)
-  (let ((key-types (vkbd-key-spec-key-types key-spec)))
-    (when key-types
-      (if (memq 'shift pressed-modifiers)
-          ;; with shift
-          (or
-           ;; 2nd key-type if valid
-           (cdr key-types)
-           ;; single key-type
-           (let ((kt (car key-types)))
-             (if (integerp kt)
-                 ;; character
-                 (list (upcase kt))
-               ;; symbol
-               key-types)))
-        ;; without shift
-        key-types))))
+  (car
+   (vkbd-key-spec-modified-key-types-and-consumed-modifiers
+    key-spec pressed-modifiers)))
 
 (defun vkbd-key-spec-width-ratio (key-spec)
   "Return the width ratio property of KEY-SPEC."
@@ -2290,31 +2289,67 @@ If shift is not pressed, return the base key-type."
   ;; Update display
   (vkbd-keyboard-style--update-key keyobj))
 
+(defun vkbd-key-object-to-simple-modifier (keyobj)
+  (when-let* ((key-spec (vkbd-key-object-key-spec keyobj))
+              (key-type (vkbd-key-spec-base-key-type key-spec)))
+    (vkbd-key-type-to-simple-modifier key-type)))
+
 (defun vkbd-key-object-pressed-modifier-p (keyobj)
   "Return non-nil if KEYOBJ is a pressed modifier key."
-  (when-let* ((key-spec (vkbd-key-object-key-spec keyobj))
-              (key-type (vkbd-key-spec-base-key-type key-spec))
-              (modifier (vkbd-key-type-to-simple-modifier key-type)))
-    (and modifier
-         (memq modifier
-               (vkbd-keyboard-pressed-modifiers
-                (vkbd-key-object-keyboard keyobj))))))
+  (when-let* ((modifier (vkbd-key-object-to-simple-modifier keyobj)))
+    (memq modifier
+          (vkbd-keyboard-pressed-modifiers
+           (vkbd-key-object-keyboard keyobj)))))
 
 (defun vkbd-key-object-locked-modifier-p (keyobj)
   "Return non-nil if KEYOBJ is a locked modifier key."
-  (when-let* ((key-spec (vkbd-key-object-key-spec keyobj))
-              (key-type (vkbd-key-spec-base-key-type key-spec))
-              (modifier (vkbd-key-type-to-simple-modifier key-type)))
-    (and modifier
-         (memq modifier
-               (vkbd-keyboard-locked-modifiers
-                (vkbd-key-object-keyboard keyobj))))))
+  (when-let* ((modifier (vkbd-key-object-to-simple-modifier keyobj)))
+    (memq modifier
+          (vkbd-keyboard-locked-modifiers
+           (vkbd-key-object-keyboard keyobj)))))
 
-(defun vkbd-key-object-to-key-type (keyobj keyboard)
-  "Convert KEYOBJ to a key-type in the current KEYBOARD state."
-  (vkbd-key-spec-modified-key-type
-   (vkbd-key-object-key-spec keyobj)
-   (vkbd-keyboard-pressed-modifiers keyboard)))
+
+(defun vkbd-generate-key-object-pressed-events (keyobj)
+  "Convert KEYOBJ to events, updating pressed modifiers in KEYBOARD.
+
+Return a list of events corresponding to KEYOBJ."
+  (if-let* ((modifier (vkbd-key-object-to-simple-modifier keyobj)))
+      ;; A simple modifier key was pressed.
+      ;; (e.g. C-, S-, M-. Excluding C-x, C-c, etc.)
+      (progn
+        ;; Cycle normal => pressed => lock => normal
+        (vkbd-cycle-modifier-state (vkbd-key-object-keyboard keyobj) modifier)
+        ;; No events
+        nil)
+    ;; Not a simple modifier key (character, special key, compound key, etc.)
+    (vkbd-generate-key-object-pressed-events--normal keyobj)))
+
+(defun vkbd-generate-key-object-pressed-events--normal (keyobj)
+  (let ((keyboard (vkbd-key-object-keyboard keyobj)))
+    (vkbd-delay-keyboard-display-update keyboard
+      (let* ((key-type (vkbd-generate-key-object-key-type keyobj))
+             ;; key-type to events
+             (events-and-new-modifiers
+              (vkbd-fold-key-sequence-modifiers
+               (vkbd-key-type-to-key-sequence key-type)
+               (vkbd-keyboard-pressed-modifiers keyboard))))
+        (vkbd-set-keyboard-pressed-modifiers keyboard
+                                             (cdr events-and-new-modifiers))
+        (car events-and-new-modifiers)))))
+
+(defun vkbd-generate-key-object-key-type (keyobj)
+  (let* ((keyboard (vkbd-key-object-keyboard keyobj))
+         (modifiers (vkbd-keyboard-pressed-modifiers keyboard))
+         ;; Apply shift
+         (key-types-and-consumed-modifiers
+          (vkbd-key-spec-modified-key-types-and-consumed-modifiers
+           (vkbd-key-object-key-spec keyobj)
+           modifiers)))
+    ;; Update modifier state
+    (vkbd-set-keyboard-pressed-modifiers
+     keyboard
+     (seq-difference modifiers (cdr key-types-and-consumed-modifiers)))
+    (car (car key-types-and-consumed-modifiers))))
 
 
 ;;;;; Text Keyboard Style
