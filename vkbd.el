@@ -815,6 +815,9 @@ dynamically bind this variable.")
 
       (fit-window-to-buffer window)
 
+      (let ((side (vkbd-keyboard-window-side keyboard)))
+        (window-preserve-size window (memq side '(left right)) t))
+
       (vkbd-start-window-deletion-detection))))
 
 (defun vkbd-delete-keyboard-container--window (keyboard)
