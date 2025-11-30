@@ -236,7 +236,8 @@ Return a object that holds all information about the keyboard."
                 :buffer nil
                 :pressed-modifiers nil
                 :locked-modifiers nil
-                :user-data user-data))
+                :user-data user-data
+                :key-repeat-state nil))
          (buffer (vkbd-make-keyboard-buffer keyboard)))
     (setf (vkbd-keyboard-property keyboard :buffer) buffer)
 
@@ -265,6 +266,8 @@ Return a object that holds all information about the keyboard."
             (vkbd-keyboard-buffer keyboard)
             (vkbd-keyboard-frame keyboard))
   (unless (vkbd-keyboard-property keyboard :deleted)
+    ;; Stop the timer if it exists
+    (vkbd-stop-key-repeat keyboard t)
     ;; Mark as killed
     (setf (vkbd-keyboard-property keyboard :deleted) t)
     ;; Delete container
@@ -345,6 +348,12 @@ This function is for debugging purposes."
       (let ((sf (selected-frame)))
         (or (frame-parent sf)
             sf)))))
+
+(defun vkbd-keyboard-key-repeat-state (keyboard)
+  (vkbd-keyboard-property keyboard :key-repeat-state))
+
+(defun vkbd-set-keyboard-key-repeat-state (keyboard key-repeat-state)
+  (setf (vkbd-keyboard-property keyboard :key-repeat-state) key-repeat-state))
 
 ;;;;;; User Data
 
@@ -1341,6 +1350,11 @@ KEYBOARD is a keyboard object."
   (goto-char (point-min)))
 
 (defun vkbd-erase-keyboard-buffer-contents (keyboard)
+  ;; Stop the key repeat timer if it exists.
+  ;; Because clearing the buffer contents will invalidate all key-objects.
+  ;; TODO: Should I add delete-key-object and do this from there?
+  (vkbd-stop-key-repeat keyboard t)
+
   (goto-char (point-min))
   (let ((inhibit-read-only t))
     (vkbd-keyboard-style--erase-keyboard keyboard))
@@ -1442,7 +1456,9 @@ keyboard buffer."
             buffer))))))
 
 
-;;;;; Key Translation
+;;;;; Key Event Generation
+
+;;;;;; Key Translation
 
 (defconst vkbd-translation-event-types
   '(down-mouse-1 double-down-mouse-1 triple-down-mouse-1
@@ -1478,23 +1494,41 @@ PROMPT is the prompt string for the current key sequence.
 
 Return the translated key sequence vector, or nil if no translation is needed.
 Return an empty vector ([]) to cancel the input event."
-  ;; TODO: `vkbd-text-keyboard-translate-event'や
-  ;; `vkbd-text-keyboard-key-object-at-event'との役割分担を見直したい。
-  ;; 将来的に専用バッファ以外にもキーボードを置けるようにしたいかもしれない。
-  ;; それなら処理対象イベント判別の時点で色々と変えなければならなくなる。
+  ;; Called when events in `vkbd-translation-event-types' occur.
+
+  ;; TODO: キーボードバッファだけでなく任意のバッファにキーボードを置
+  ;; けるようにしたい。それにはここでイベント発生ポイントのテキストプ
+  ;; ロパティを見るなどの処理が必要になる。
+  ;;
+  ;; 関連する関数:
+  ;; - `vkbd-text-keyboard-translate-event'
+  ;; - `vkbd-text-keyboard-key-object-at-event'
+  ;; - `vkbd-event-to-keyboard'
+  ;; - `vkbd-event-to-keyboard-buffer'
+  ;; - `vkbd-event-in-keyboard-buffer-p'
   (when-let* ((event (vkbd-current-key-remap-event))
               (buffer (vkbd-event-to-keyboard-buffer event))
               (keyboard (vkbd-keyboard-buffer-keyboard buffer)))
     (vkbd-log "Translate Event: Occurred in keyboard buffer %s" event)
+
+    ;; Call the event translation function of the current keyboard style.
+    ;; For example, `vkbd-text-keyboard-translate-event' and
+    ;; `vkbd-translate-keyboard-event'.
     (let ((result (vkbd-keyboard-style--translate-event keyboard prompt event)))
       (vkbd-log "Translate Event: Return %s" result)
       result)))
 
-
 (defun vkbd-translate-keyboard-event (keyboard _prompt event key-picker)
   ;; Called when events in `vkbd-translation-event-types' occur.
   (let ((result-events
-         (vkbd-translate-keyboard-event-loop keyboard event key-picker)))
+         (if (vkbd-keyboard-key-repeat-state keyboard)
+             ;; In key repeat state
+             ;; キーリピートの待ち時間中(キーイベントを返してそれが消
+             ;; 費されて再び戻ってくるまでの間)に何かイベントが発生し
+             ;; たら、キーリピートを停止する。
+             (vkbd-translate-keyboard-event--in-key-repeat-state keyboard event)
+           ;; Not in key repeat state
+           (vkbd-translate-keyboard-event-loop keyboard event key-picker))))
     (vkbd-log "Translate Event: Result=%s" result-events)
     (cond
      ((eq result-events 'no-conv)
@@ -1509,24 +1543,45 @@ Return an empty vector ([]) to cancel the input event."
      (t
       nil))))
 
-;; input-decode-map
-;;   key以外 => 変換しない
-;;   key上
-;;     down => upまで待ち変換
-;;     up => 変換
-;;     その他(mouse-movement, touchscreen-update) => key上である以上はブロック
+(defun vkbd-translate-keyboard-event--in-key-repeat-state (keyboard event)
+  (vkbd-log
+   "Translate Event: An event occurs during the repeat timer: %s"
+   event)
+  (pcase (car-safe event)
+    ('touchscreen-update
+     ;; Ignore
+     )
+    ((or 'mouse-1 'drag-mouse-1 'touchscreen-end)
+     (vkbd-stop-key-repeat keyboard))
+    (_ ;;Unknown event in keyboard buffer
+     (vkbd-stop-key-repeat keyboard)))
+  nil)
 
-;; 問題はdown, upの変換後。
+;; input-decode-mapによるイベント変換の流れ:
+;; `vkbd-translate-keyboard-buffer-event' : input-decode-mapに登録される関数
+;; => `vkbd-keyboard-style--translate-event' : キースタイルによるカスタマイズ
+;; => `vkbd-text-keyboard-translate-event' : テキストスタイル用
+;; => `vkbd-translate-keyboard-event' : 変換結果の調整
+;; => `vkbd-translate-keyboard-event-loop'
+
+;; 変換対象のマウス・タッチイベントが:
+;;   キー以外の場所で発生 => 変換しない
+;;   キー上で発生
+;;     mouse down => upまで待ってから変換
+;;     mouse up   => 速やかに変換
+;;     その他(mouse-movement, touchscreen-update) => キー上である以上はブロック
+
+;; 問題はmouse down, mouse upの変換後。
 ;; 変換後のイベントがまだ無く、修飾キーが押しっぱなしなら処理を継続する。
 ;; read-eventで後続のイベントを読み込んで処理をする。
-;;   key上
-;;     down => upまで待ち変換 => 繰り返し
-;;     up => 変換 => 繰り返し
-;;     mouse-1, touch系 => key上である以上はブロック
+;;   キー上
+;;     mouse down => upまで待ち変換 => 繰り返し
+;;     mouse up => 変換 => 繰り返し
+;;     その他mouse, touch系 => key上である以上はブロック
 ;;     その他 => そのイベントを返す(変換結果とする)
-;;   key以外
+;;   キー以外
 ;;     switch-frame => 無視?
-;;     「修飾キーを適用して」返す(変換結果とする)
+;;     その他入力イベント => 「修飾キーを適用して」返す(変換結果とする)
 
 (defun vkbd-translate-keyboard-event-loop (keyboard event key-picker)
   (let ((result-events nil)
@@ -1543,8 +1598,13 @@ Return an empty vector ([]) to cancel the input event."
       (setq result-events
             (if-let* ((keyobj (funcall key-picker event)))
                 ;; EVENT occurred on a key
-                (vkbd-translate-keyboard-event--on-keyobj
-                 keyboard event keyobj first)
+                (let ((result-events (vkbd-translate-keyboard-event--on-keyobj
+                                      event keyobj first (vkbd-key-repeat-delay))))
+                  (when (and result-events
+                             ;; Still being pressed
+                             (vkbd-key-object-pressed keyobj))
+                    (vkbd-start-key-repeat keyobj))
+                  result-events)
               ;; EVENT did not occur on a key
               (vkbd-translate-keyboard-event--off-keyobj
                keyboard event first)))
@@ -1597,7 +1657,7 @@ Return an empty vector ([]) to cancel the input event."
     (vkbd-log "Translate Event: read-event=%s" event)
     event))
 
-(defun vkbd-translate-keyboard-event--on-keyobj (_keyboard event keyobj first)
+(defun vkbd-translate-keyboard-event--on-keyobj (event keyobj first seconds)
   (vkbd-log
    "Translate Event: Occurred on a key (#%s first=%s)"
    (vkbd-key-object-id keyobj) first)
@@ -1610,9 +1670,13 @@ Return an empty vector ([]) to cancel the input event."
     ;; Update key state
     (vkbd-set-key-object-pressed keyobj t)
     ;; Wait for up event
-    (vkbd-wait-for-mouse-up-event)
-    ;; Update key state
-    (vkbd-set-key-object-pressed keyobj nil)
+    (unless (eq (vkbd-wait-for-mouse-up-event
+                 (when (vkbd-key-repeat-enabled
+                        (vkbd-key-object-keyboard keyobj))
+                   seconds))
+                'timeout)
+      ;; Update key state
+      (vkbd-set-key-object-pressed keyobj nil))
     ;; Convert KEYOBJ and KEYBOARD's pressed modifiers to events
     (vkbd-generate-key-object-pressed-events keyobj))
 
@@ -1634,6 +1698,7 @@ Return an empty vector ([]) to cancel the input event."
 
    ;; Unknown event on the key (mouse-2|3 ?) => No conv
    (t
+    (vkbd-log "Translate Event: Unknown event occurred on keyobj: %s" event)
     (if first
         'no-conv
       (list event)))))
@@ -1663,26 +1728,36 @@ Return an empty vector ([]) to cancel the input event."
     ;;     'no-conv
     (list event))))
 
-(defun vkbd-wait-for-mouse-up-event ()
+(defun vkbd-wait-for-mouse-up-event (&optional seconds)
   (vkbd-log "Translate Event: Waiting for mouse up")
-  (while
-      (let* ((new-event (vkbd-read-event-silent))
-             (new-event-type (car-safe new-event)))
-        (cond
-         ;; End of key press
-         ((memq new-event-type '(mouse-1 drag-mouse-1 touchscreen-end))
-          nil)
-         ;; Movement
-         ((memq new-event-type '(mouse-movement touchscreen-update))
-          t)
-         ;; switch-frame
-         ((eq new-event-type 'switch-frame)
-          t) ;; or nil?
-         ;; Unknown event
-         (t
-          nil)))))
+  (let ((result nil))
+    (while
+        (let* ((new-event (vkbd-read-event-silent nil seconds))
+               (new-event-type (car-safe new-event)))
+          (vkbd-log "Translate Event: new-event=%s" new-event)
+          (cond
+           ;; Timeout
+           ((null new-event)
+            (setq result 'timeout)
+            nil)
+           ;; End of key press
+           ((memq new-event-type '(mouse-1 drag-mouse-1 touchscreen-end))
+            nil)
+           ;; Movement
+           ((memq new-event-type '(mouse-movement touchscreen-update))
+            t)
+           ;; switch-frame
+           ((eq new-event-type 'switch-frame)
+            t) ;; or nil?
+           ;; Unknown event
+           (t
+            (vkbd-log
+             "Translate Event: Unknown event occurred while waiting: %s"
+             new-event)
+            nil))))
+    result))
 
-;;;;; Replacement for read-event, read-char, and read-char-exclusive
+;;;;;; Replacement for read-event, read-char, and read-char-exclusive
 
 ;; `input-decode-map' is not applied to `read-event', `read-char', or
 ;; `read-char-exclusive'. Therefore, we use advice to forcibly apply
@@ -1861,6 +1936,144 @@ keystroke events."
       ;; unread_switch_frame = delayed_switch_frame;
       (push delayed-switch-frame unread-command-events))
     val))
+
+
+;;;;;; Key Repeat
+
+(defcustom vkbd-key-repeat-delay 0.6
+  "Initial delay in seconds before key repeat starts."
+  :group 'vkbd
+  :type 'float)
+
+(defcustom vkbd-key-repeat-interval 0.04
+  "Interval in seconds between repeated key events."
+  :group 'vkbd
+  :type 'float)
+
+(defun vkbd-key-repeat-delay ()
+  vkbd-key-repeat-delay)
+
+(defcustom vkbd-key-repeat-enabled t
+  "Non-nil enables key repeat.
+
+Note: Even if this variable is non-nil, key repeat may not work due to
+limitations.
+
+Currently, key repeat is not available when Frame Type (container-type)
+is not `window'."
+  :group 'vkbd
+  :type 'boolean)
+
+(defun vkbd-key-repeat-enabled (keyboard)
+  (and vkbd-key-repeat-enabled
+       ;; Key repeat does not work properly when using frames.
+       ;; To correctly process keys generated by the virtual keyboard,
+       ;; the frame containing the target buffer must be selected and focused.
+       ;; However, doing so prevents mouse-up events from occurring on the
+       ;; unfocused virtual keyboard frame, causing key repeat to continue
+       ;; indefinitely.
+       (eq (vkbd-keyboard-container-type keyboard) 'window)))
+
+(defmacro vkbd-key-repeat-prop (key-repeat-state prop)
+  `(plist-get (cdr ,key-repeat-state) ,prop))
+
+(defun vkbd-start-key-repeat (keyobj)
+  (vkbd-log "Translate Event: Start key repeat")
+  (let ((keyboard (vkbd-key-object-keyboard keyobj)))
+    (if (vkbd-key-repeat-enabled keyboard)
+        (let ((key-repeat-state
+               (list 'vkbd-key-repeat-state
+                     :keyobj keyobj
+                     :timer nil
+                     :last-generation-time (float-time))))
+          (vkbd-set-keyboard-key-repeat-state keyboard key-repeat-state)
+          (vkbd-schedule-key-repeat-timer key-repeat-state 1))
+      ;; Disabled
+      (vkbd-set-key-object-pressed keyobj nil))))
+
+(defun vkbd-stop-key-repeat (keyboard &optional prevent-display-update)
+  (when-let* ((key-repeat-state (vkbd-keyboard-key-repeat-state keyboard)))
+    (vkbd-log "Translate Event: Stop key repeat")
+    ;; Cancel timer
+    (when-let* ((timer (vkbd-key-repeat-prop key-repeat-state :timer)))
+      (cancel-timer timer))
+    ;; Release the key pressed
+    (let ((keyobj (vkbd-key-repeat-prop key-repeat-state :keyobj)))
+      (if prevent-display-update
+          (let ((vkbd-prevent-keyboard-updates t))
+            (vkbd-set-key-object-pressed keyobj nil))
+        (vkbd-set-key-object-pressed keyobj nil)))
+    ;; Clear keyboard state
+    (vkbd-set-keyboard-key-repeat-state keyboard nil)))
+
+;; キーリピート作動中に、キー生成関数がキーを生成してから再度キー生成
+;; 関数に戻ってくるまでの時間(秒)です。
+;; 理想は0ですが、短いと生成したキーがまだ消費されないうちに戻ってきて
+;; しまい繰り返し待つことになります。
+;; 長いとキーリピートの最短間隔が長くなってしまいますし、また、待って
+;; いる間に発生した想定外のイベントを見逃す可能性が高くなります。
+(defconst vkbd-key-repeat--timer-delay 0.02)
+
+;; キーリピート処理の流れ:
+;;
+;; input-decode-mapのmouse downが反応
+;;   => up待ち(`vkbd-wait-for-mouse-up-event')
+;;      => delay時間経過 => タイマーセット => キーイベントを変換結果として返す
+;;      => upした => キーイベントを変換結果として返す
+;; vkbd-key-repeat--timer-delayだけ経過しタイマーイベント発生
+;; (`vkbd-on-key-repeat-timer')
+;;   => 前に生成したイベントが消費されていないなら再びタイマーセットして繰り返し
+;;   => 消費されているなら
+;;      => up待ち(`vkbd-wait-for-mouse-up-event')
+;;         => interval時間経過 => タイマーセット => キーイベントを生成
+;;         => upした => キーイベントを生成
+
+(defun vkbd-schedule-key-repeat-timer (key-repeat-state repeat-count)
+  (vkbd-log "Translate Event: Schedule key repeat timer %s" repeat-count)
+
+  (setf (vkbd-key-repeat-prop key-repeat-state :timer)
+        (run-with-timer vkbd-key-repeat--timer-delay nil
+                        #'vkbd-on-key-repeat-timer
+                        key-repeat-state repeat-count)))
+
+(defun vkbd-on-key-repeat-timer (key-repeat-state repeat-count)
+  (vkbd-log "Translate Event: on-timer repeat-count=%s" repeat-count)
+  (setf (vkbd-key-repeat-prop key-repeat-state :timer) nil)
+
+  (if unread-command-events
+      ;; 前回追加したイベントがまだ消費されていない可能性があるので、
+      ;; リピート入力を先延ばしする。
+      ;;
+      ;; タイマーの時間はあまり短くしても意味が無い。
+      ;; unread-command-eventsが消費される前に繰り返すことはできないので。
+      (progn
+        (vkbd-log
+         "Translate Event: There are unread events, so postpone repeating")
+        (vkbd-schedule-key-repeat-timer key-repeat-state repeat-count))
+    ;; 消費済なので次のキー入力に進む。
+    (let* ((keyobj (vkbd-key-repeat-prop key-repeat-state :keyobj))
+           (last-time (vkbd-key-repeat-prop key-repeat-state
+                                            :last-generation-time))
+           (wait-time (max
+                       ;; 0にするとMessageバッファでリピートすると
+                       ;; 止まらなくなる。
+                       0.01
+                       (- (+ last-time vkbd-key-repeat-interval)
+                          (float-time))))
+           (result-events (vkbd-translate-keyboard-event--on-keyobj
+                           '(down-mouse-1) keyobj nil wait-time)))
+      (setf (vkbd-key-repeat-prop key-repeat-state :last-generation-time)
+            (float-time))
+      (if (and result-events (vkbd-key-object-pressed keyobj))
+          ;; Schedule next
+          (vkbd-schedule-key-repeat-timer key-repeat-state (1+ repeat-count))
+        ;; End of key repeat
+        (vkbd-stop-key-repeat (vkbd-key-object-keyboard keyobj)))
+
+      (vkbd-log "Translate Event: Push %s to unread-command-events"
+                result-events)
+      (setq unread-command-events (append unread-command-events result-events))
+      )))
 
 
 ;;;;; Key Modifiers
@@ -3713,14 +3926,14 @@ The deleted frame will not be reused."
        (when (eq (car point) id)
          (cdr point))))))
 
-(defun vkbd-read-event-silent (&optional not-keep-echo-area)
+(defun vkbd-read-event-silent (&optional not-keep-echo-area seconds)
   ;; Suppress display of events
   ;; (e.g. down-mouse-1-) in echo area
   (let ((echo-keystrokes 0))
     (if not-keep-echo-area
-        (vkbd-read-event-from-internal)
+        (vkbd-read-event-from-internal nil nil seconds)
       (let ((old-message (current-message)))
-        (prog1 (vkbd-read-event-from-internal)
+        (prog1 (vkbd-read-event-from-internal nil nil seconds)
           (vkbd-echo old-message))))))
 
 (defun vkbd-input-event-p (event)
