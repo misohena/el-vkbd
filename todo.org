@@ -3,10 +3,8 @@
 #+AUTHOR: AKIYAMA Kouhei
 
 * Inbox
-** TODO Emacs終了時にユーザーデータを保存すべき
-現在はキーボードオブジェクトを削除するときしかユーザーデータを保存しないので、キーボードを出しっぱなしでEmacsを終了すると次回起動時に状態を復元できない。
-
-そもそも設定を変更した後にすぐに保存すべき。ただし、フレーム位置のドラッグ時は除く。
+** TODO タッチでキーリピートをするときに指が動くとリピートが中断される
+touchscreen-updateが発生するのが原因だが、どうすれば良いのか。
 
 ** TODO 使用できないシチュエーションについて調べる :INPUT:
 => read系関数については「[[*Emacsのイベント読み取り関数の構造を詳しく調べる][Emacsのイベント読み取り関数の構造を詳しく調べる]]」で調べた。
@@ -102,6 +100,15 @@ Hacker's KeyboardのようにFnキーを押したらレイアウト毎全部書�
 領域の小ささを多少カバーできるのではないか。
 ** TODO 任意のバッファ内に直接キーボードを生成できるようにする
 バッファローカルキーボードを作りたい。SVG画像じゃないと実用的じゃないと思う。これをやるならキーボードの状態はバッファに持たせない方が良い。一つのバッファに複数のキーボードを配置する可能性があるので。
+
+キーボードオブジェクトをキーボードバッファから取得している次の関数を修正しなければならないはず。
+- vkbd-translate-keyboard-buffer-event
+- vkbd-text-keyboard-translate-event
+- vkbd-text-keyboard-key-object-at-event
+- vkbd-event-to-keyboard
+- vkbd-event-to-keyboard-buffer
+- vkbd-event-in-keyboard-buffer-p
+他にも(buffer-list)で全キーボードオブジェクトを列挙している箇所も問題。
 
 ** TODO ポイント(カーソル)の位置を自動的に避けてくれるモード
 ** TODO 自動的に小さくなったり大きくなってくれたりするモード
@@ -924,4 +931,21 @@ CLOSED: [2025-11-30 Sun 17:36]
 実装中に遭遇した問題:
 - Messageバッファでリピートが止まらなくなる。visible-bellのせいか分からないけれど、リピートのたびにエラーが出てどうやっても止められなくなる。up待ちのread-eventの待ち時間が0にならないようにしたら治った。
 - フレーム使用時にマウスupしてもリピートが止まらない。フレームからフォーカスが外れているのでmouse upイベントが発生しない。これはしょうがない。Emacsではフォーカスが当たっていないところのマウスイベントは発生しない。ホイールなんかでもそうだった。downだけはその瞬間にフォーカスが当たるから発生するけど。これは諦めるしかない。キーリピートはcontainer-type=window時のみとする。
+
+** DONE Emacs終了時にユーザーデータを保存すべき
+CLOSED: [2025-12-01 Mon 00:08]
+現在はキーボードオブジェクトを削除するときしかユーザーデータを保存しないので、キーボードを出しっぱなしでEmacsを終了すると次回起動時に状態を復元できない。
+
+そもそも設定を変更した後にすぐに保存すべき。ただし、フレーム位置のドラッグ時は除く。
+
+フレーム位置のドラッグ時が残るなら、結局Emacs終了時に保存しなければならない。
+
+- 設定変更と保存に関する修正
+  - vkbd-set-keyboard-user-dataは値の変更を検出して:user-data-modifiedプロパティをセットする。
+  - vkbd-save-keyboard-user-dataは:user-data-modifiedプロパティがセットされているときだけ保存する。
+  - vkbd-set-keyboard-user-data-save関数を追加してvkbd-set-keyboard-user-dataとvkbd-save-keyboard-user-dataの両方を呼び出す。
+  - フレーム位置変更以外の部分ではvkbd-set-keyboard-user-data-saveを使う。
+- Emacs終了時の保存
+  - vkbd-save-all-keyboard-user-dataを追加する。
+  - vkbd-global-setup-for-user-data-saveとvkbd-global-teardown-for-user-data-saveを追加し、kill-emacs-hookにvkbd-save-all-keyboard-user-dataを登録したり解除したりする。
 

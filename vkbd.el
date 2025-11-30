@@ -237,6 +237,7 @@ Return a object that holds all information about the keyboard."
                 :pressed-modifiers nil
                 :locked-modifiers nil
                 :user-data user-data
+                :user-data-modified nil
                 :key-repeat-state nil))
          (buffer (vkbd-make-keyboard-buffer keyboard)))
     (setf (vkbd-keyboard-property keyboard :buffer) buffer)
@@ -295,12 +296,14 @@ This function is for debugging purposes."
 
 (defun vkbd-global-setup ()
   (vkbd-global-setup-for-input-decode-map)
-  (vkbd-global-setup-for-read-event))
+  (vkbd-global-setup-for-read-event)
+  (vkbd-global-setup-for-user-data-save))
 
 (defun vkbd-global-teardown ()
   (vkbd-log "Global Teardown")
   (vkbd-global-teardown-for-input-decode-map)
-  (vkbd-global-teardown-for-read-event))
+  (vkbd-global-teardown-for-read-event)
+  (vkbd-global-teardown-for-user-data-save))
 
 (defun vkbd-auto-global-teardown ()
   (unless (seq-some #'vkbd-keyboard-buffer-keyboard (buffer-list))
@@ -363,13 +366,23 @@ This function is for debugging purposes."
    user-data-alist))
 
 (defun vkbd-save-keyboard-user-data (keyboard)
-  (vkbd-data-storage-save
-   (plist-get (vkbd-keyboard-options keyboard) :user-data-storage)
-   (vkbd-keyboard-property keyboard :user-data)))
+  (when (vkbd-keyboard-property keyboard :user-data-modified)
+    (vkbd-data-storage-save
+     (plist-get (vkbd-keyboard-options keyboard) :user-data-storage)
+     (vkbd-keyboard-property keyboard :user-data))
+    (setf (vkbd-keyboard-property keyboard :user-data-modified) nil)))
 
 (defun vkbd-set-keyboard-user-data (keyboard item-name item-value)
-  (setf (alist-get item-name (vkbd-keyboard-property keyboard :user-data))
-        item-value))
+  (unless (equal
+           (alist-get item-name (vkbd-keyboard-property keyboard :user-data))
+           item-value)
+    (setf (alist-get item-name (vkbd-keyboard-property keyboard :user-data))
+          item-value
+          (vkbd-keyboard-property keyboard :user-data-modified) t)))
+
+(defun vkbd-set-keyboard-user-data-save (keyboard item-name item-value)
+  (vkbd-set-keyboard-user-data keyboard item-name item-value)
+  (vkbd-save-keyboard-user-data keyboard))
 
 (defun vkbd-keyboard-user-data (keyboard item-name &optional type-cast)
   (let ((value
@@ -380,6 +393,18 @@ This function is for debugging purposes."
 
 (defun vkbd-cast-cons-numbers (value)
   (and (consp value) (numberp (car value)) (numberp (cdr value)) value))
+
+(defun vkbd-save-all-keyboard-user-data ()
+  (dolist (buffer (buffer-list))
+    (when-let* ((keyboard (vkbd-keyboard-buffer-keyboard buffer)))
+      (vkbd-save-keyboard-user-data keyboard))))
+
+(defun vkbd-global-setup-for-user-data-save ()
+  (add-hook 'kill-emacs-hook #'vkbd-save-all-keyboard-user-data))
+
+(defun vkbd-global-teardown-for-user-data-save ()
+  (remove-hook 'kill-emacs-hook #'vkbd-save-all-keyboard-user-data))
+
 
 ;;;;;; Keyboard Container
 
@@ -421,7 +446,7 @@ specified."
   (vkbd-delete-all-unused-frames)
 
   ;; Change the value (Before `vkbd-make-keyboard-container')
-  (vkbd-set-keyboard-user-data keyboard 'container-type container-type)
+  (vkbd-set-keyboard-user-data-save keyboard 'container-type container-type)
 
   ;; Make a new container
   (vkbd-make-keyboard-container keyboard))
@@ -629,7 +654,7 @@ dynamically bind this variable.")
 
     ;; Save
     (when (symbolp new-layout-spec)
-      (vkbd-set-keyboard-user-data keyboard 'layout new-layout-spec))))
+      (vkbd-set-keyboard-user-data-save keyboard 'layout new-layout-spec))))
 
 (defun vkbd-read-keyboard-layout-from-menu (keyboard)
   (car (x-popup-menu
@@ -918,7 +943,7 @@ dynamically bind this variable.")
   (setq side (vkbd-cast-side-window-side side))
   (when (and side
              (vkbd-keyboard-window-side-user-selectable-p keyboard))
-    (vkbd-set-keyboard-user-data keyboard 'window-side side)
+    (vkbd-set-keyboard-user-data-save keyboard 'window-side side)
     (vkbd-recreate-keyboard-container keyboard)))
 
 (defun vkbd-keyboard-window-side-user-selectable-p (keyboard)
@@ -1197,7 +1222,7 @@ SIZE is a cons cell (WIDTH . HEIGHT) specifying the frame size in pixels."
   (modify-frame-parameters frame `((left . (+ ,(car xy)))
                                    (top . (+ ,(cdr xy)))))
   (when-let* ((keyboard (vkbd-keyboard-frame-keyboard frame)))
-    (vkbd-set-keyboard-user-data
+    (vkbd-set-keyboard-user-data ;; Not -save
      keyboard 'frame-position (cons (car xy) (cdr xy)))))
 
 (defcustom vkbd-keyboard-frame-keep-visible-margins
