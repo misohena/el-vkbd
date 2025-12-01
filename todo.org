@@ -3,6 +3,9 @@
 #+AUTHOR: AKIYAMA Kouhei
 
 * Inbox
+** TODO window表示時でもカーソルを消す
+vkbd-keyboard-buffer-local-variablesを追加してcursor-typeにnilを指定した。
+
 ** TODO 通常のキーとしてレイアウトを切り替えるボタンを置けるようにする
 ** TODO タイトルバーにレイアウトを切り替えるボタンを置けるようにする
 ** TODO タイトルバーに並べるボタンをカスタマイズできるようにする
@@ -35,10 +38,6 @@ C-gで脱出できなくて困ることがある。
 ** TODO 少なくともread-event系では物理キーに対する修飾キーロックできる
 read-eventを置き換えているので、全てのイベントに対して常時修飾キーを適用出来るはず。
 
-** TODO キーボードバッファでの入力イベントを抑制する
-キーボードバッファにフォーカスを持たせて何か入力したときにエラーが発生して鬱陶しいので。
-self-insert-commandを対象バッファへ切り替え後のself-insertにリマップするのはどうだろう。
-
 ** TODO unread-command-eventsをうまく使えないか :INPUT:
 やっぱりunread-command-eventsはread_charで処理しているので、read-eventに作用する。
 
@@ -53,10 +52,7 @@ self-insert-commandを対象バッファへ切り替え後のself-insertにリ�
 
 本当にうまく行かないのだろうか。
 
-** TODO switch-frameイベントをできるだけ妨害したらどうなるか :INPUT:
-Virtual Keyboardへのswitch-frameやその逆をinput-decode-mapで妨害できないものか。
-また、できたとして実際に妨害したらどうなるのだろうか。実害は無いのか。
-フォーカス移動が他の悟られないなどのメリットはあるだろうか。
+少なくとも複数のキーを生成するのに使えないか。
 
 ** TODO 入力対象フレームの割り出し処理を改善する :INPUT:
 vkbd-keyboard-target-frameが典型的。
@@ -91,6 +87,11 @@ Hacker's KeyboardのようにFnキーを押したらレイアウト毎全部書�
 - グライド入力？　みたいなのってどういうの？
 
 ** TODO Fnキーでレイアウトをごっそり切り替える :INPUT:
+** TODO switch-frameイベントをできるだけ妨害したらどうなるか :INPUT:
+Virtual Keyboardへのswitch-frameやその逆をinput-decode-mapで妨害できないものか。
+また、できたとして実際に妨害したらどうなるのだろうか。実害は無いのか。
+フォーカス移動が他の悟られないなどのメリットはあるだろうか。
+
 ** TODO SVGキーボードスタイルを追加する
 ** TODO Emacsのオンスクリーンキーボードとして使えるようにする
 ** TODO 押したらサイズが大きくなるというのはどうだろう
@@ -964,4 +965,22 @@ container-type=windowのときに閉じるボタンをRETで押したくなる�
 ** DONE ウィンドウにno-other-windowを設定する
 CLOSED: [2025-12-01 Mon 17:19]
 C-x oで仮想キーボードに移りたくない。
+
+** DONE キーボードバッファでの入力イベントを抑制する
+CLOSED: [2025-12-01 Mon 19:10]
+キーボードバッファにフォーカスを持たせて何か入力したときにエラーが発生して鬱陶しいので。
+
+self-insert-commandを対象バッファへ切り替え後のself-insertにリマップするのはどうだろう。
+それでもreturnキーを押したときのnewlineはエラーになる。
+そもそもその入力対象バッファにおいて通常のキーがself-insert-commandである保証はない。ましてやreturnはshell-modeなんかだと送信機能に割り当てられている。
+
+単に入力対象バッファへ移動するだけでもよい？
+
+いや、仮想キーボードバッファ内での物理キー入力に対してすべきことは、それを入力対象バッファへ転送することじゃないだろうか。
+
+つまり入力対象バッファへ切り替えた上で、 unread-command-events にイベントを追加する。
+
+……切りがないから止めよう。単に入力対象バッファへ移動するだけで十分だ。
+
+害になりそうなコマンドを vkbd-select-input-target へリマップしておく。
 

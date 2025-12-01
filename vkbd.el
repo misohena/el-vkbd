@@ -734,6 +734,7 @@ dynamically bind this variable.")
      (vkbd-fit-keyboard-container-to-buffer-contents--window keyboard))))
 
 (defun vkbd-select-input-target (keyboard)
+  (interactive (list (vkbd-guess-current-keyboard)))
   (pcase (vkbd-keyboard-container-type keyboard)
     ('child-frame
      (vkbd-select-input-target--frame keyboard))
@@ -876,31 +877,39 @@ dynamically bind this variable.")
       (fit-window-to-buffer window))))
 
 (defun vkbd-select-input-target--window (keyboard)
-  ;; input-decode-mapの後のキーマップ処理が、確実に入力対象のバッファ
-  ;; 上で行われなければならない。
-  ;; input-decode-mapに設定したdown-mouse-1が処理されるとき:
-  ;; - current-bufferはキーボードバッファ
-  ;; - selected-windowは元の選択ウィンドウのまま
-  ;; となっている。
-  ;;
-  ;; 変換結果を返すときにカレントバッファを変更しないと(キーボードバッ
-  ;; ファのままだと)、その変換結果によって実行されるコマンドはキーボー
-  ;; ドバッファのローカルマップによって決定されてしまう。
-  ;;
-  ;; そしてその後、カレントバッファが元のバッファに戻ってキーボードバッ
-  ;; ファ内で決定されたコマンドが実行されるという奇妙なことが起きる。
-  ;;
-  ;; 例: shell-modeを起動。container-type=windowで仮想キーボードを表示
-  ;; し、shell-modeをカレントバッファにした状態で仮想キーボードのRETを
-  ;; 押す。するとcomint-send-inputではなくnewlineコマンドがshell-mode
-  ;; バッファで実行される。
-  (let ((window (selected-window)))
-    (when (and (window-live-p window)
-               (not (eq window (vkbd-keyboard-property keyboard :window))))
-      (let ((buffer (window-buffer window)))
-        (when (and (buffer-live-p buffer)
-                   (not (eq buffer (vkbd-keyboard-buffer keyboard))))
-          (set-buffer buffer))))))
+  (or
+   ;; input-decode-mapの後のキーマップ処理が、確実に入力対象のバッファ
+   ;; 上で行われなければならない。
+   ;; input-decode-mapに設定したdown-mouse-1が処理されるとき:
+   ;; - current-bufferはキーボードバッファ
+   ;; - selected-windowは元の選択ウィンドウのまま
+   ;; となっている。
+   ;;
+   ;; 変換結果を返すときにカレントバッファを変更しないと(キーボードバッ
+   ;; ファのままだと)、その変換結果によって実行されるコマンドはキーボー
+   ;; ドバッファのローカルマップによって決定されてしまう。
+   ;;
+   ;; そしてその後、カレントバッファが元のバッファに戻ってキーボードバッ
+   ;; ファ内で決定されたコマンドが実行されるという奇妙なことが起きる。
+   ;;
+   ;; 例: shell-modeを起動。container-type=windowで仮想キーボードを表示
+   ;; し、shell-modeをカレントバッファにした状態で仮想キーボードのRETを
+   ;; 押す。するとcomint-send-inputではなくnewlineコマンドがshell-mode
+   ;; バッファで実行される。
+   (let ((window (selected-window)))
+     (when (and (window-live-p window)
+                (not (eq window (vkbd-keyboard-property keyboard :window))))
+       (let ((buffer (window-buffer window)))
+         (when (and (buffer-live-p buffer)
+                    (not (eq buffer (vkbd-keyboard-buffer keyboard))))
+           (set-buffer buffer)
+           t))))
+   ;; 現在のバッファが仮想キーボードなら、
+   ;; 直前に使用していたバッファのウィンドウを選択する。
+   (when (vkbd-keyboard-buffer-p (current-buffer))
+     (when-let* ((prev-window (get-mru-window nil nil t t)))
+       (select-window prev-window)))))
+
 
 ;; Side Window Side
 
@@ -1332,6 +1341,25 @@ visibility constraints defined by `vkbd-keyboard-frame-keep-visible-margins'."
   "<mouse-3>" #'ignore
   "<wheel-up>" #'ignore
   "<wheel-down>" #'ignore
+  "<remap> <self-insert-command>" #'vkbd-select-input-target
+  "<remap> <newline>" #'vkbd-select-input-target
+  "<remap> <delete-char>" #'vkbd-select-input-target
+  "<remap> <delete-forward-char>" #'vkbd-select-input-target
+  "<remap> <delete-backward-char>" #'vkbd-select-input-target
+  "<remap> <indent-for-tab-command>" #'vkbd-select-input-target
+  "<remap> <scroll-down-command>" #'vkbd-select-input-target
+  "<remap> <scroll-up-command>" #'vkbd-select-input-target
+  "<remap> <kill-word>" #'vkbd-select-input-target
+  "<remap> <backward-kill-word>" #'vkbd-select-input-target
+  "<remap> <kill-line>" #'vkbd-select-input-target
+  "<remap> <kill-whole-line>" #'vkbd-select-input-target
+  "<remap> <kill-region>" #'vkbd-select-input-target
+  "<remap> <yank>" #'vkbd-select-input-target
+  "<remap> <split-window>" #'vkbd-select-input-target
+  "<remap> <split-window-below>" #'vkbd-select-input-target
+  "<remap> <split-window-right>" #'vkbd-select-input-target
+  "<remap> <split-window-vertically>" #'vkbd-select-input-target
+  "<remap> <split-window-horizontally>" #'vkbd-select-input-target
   )
 
 (defcustom vkbd-keyboard-buffer-line-spacing nil
