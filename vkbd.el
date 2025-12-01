@@ -81,6 +81,10 @@
   :prefix "vkbd-"
   :group 'vkbd)
 
+(defun vkbd-customize ()
+  (interactive)
+  (customize-group 'vkbd))
+
 ;;;; Message
 
 (defun vkbd-msg (text)
@@ -593,6 +597,8 @@ dynamically bind this variable.")
     (define-key-after km [window-side]
       '(menu-item (vkbd-msg "Window Side") vkbd-set-keyboard-window-side
                   :visible nil))
+    (define-key-after km [customize]
+      '(menu-item (vkbd-msg "Customize") vkbd-customize))
     (define-key-after km [close]
       '(menu-item (vkbd-msg "Close") vkbd-delete-keyboard))
     km))
