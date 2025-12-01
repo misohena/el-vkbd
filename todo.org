@@ -3,9 +3,6 @@
 #+AUTHOR: AKIYAMA Kouhei
 
 * Inbox
-** TODO タッチでキーリピートをするときに指が動くとリピートが中断される
-touchscreen-updateが発生するのが原因だが、どうすれば良いのか。
-
 ** TODO 使用できないシチュエーションについて調べる :INPUT:
 => read系関数については「[[*Emacsのイベント読み取り関数の構造を詳しく調べる][Emacsのイベント読み取り関数の構造を詳しく調べる]]」で調べた。
    その上で「[[*read-event等にadviceを仕込めないか][read-event等にadviceを仕込めないか]]」で解決した。
@@ -948,4 +945,10 @@ CLOSED: [2025-12-01 Mon 00:08]
 - Emacs終了時の保存
   - vkbd-save-all-keyboard-user-dataを追加する。
   - vkbd-global-setup-for-user-data-saveとvkbd-global-teardown-for-user-data-saveを追加し、kill-emacs-hookにvkbd-save-all-keyboard-user-dataを登録したり解除したりする。
+
+** DONE タッチでキーリピートをするときに指が動くとリピートが中断される
+CLOSED: [2025-12-01 Mon 15:21]
+touchscreen-updateが発生するのが原因だが、どうすれば良いのか。
+
+ああ、(vkbd-wait-for-mouse-up-event seconds)の中でread-eventループするときにsecondsで指定した秒数だけ毎回待ってしまうからだ。終わる時間を計算しておいて、そこをめがけて待つようにしないといけない。
 

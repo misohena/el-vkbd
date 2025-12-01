@@ -1755,9 +1755,13 @@ Return an empty vector ([]) to cancel the input event."
 
 (defun vkbd-wait-for-mouse-up-event (&optional seconds)
   (vkbd-log "Translate Event: Waiting for mouse up")
-  (let ((result nil))
+  (let ((result nil)
+        (timeout-time (when (numberp seconds) (+ (float-time) seconds))))
     (while
-        (let* ((new-event (vkbd-read-event-silent nil seconds))
+        (let* ((new-event (vkbd-read-event-silent
+                           nil
+                           (when timeout-time
+                             (max 0.01 (- timeout-time (float-time))))))
                (new-event-type (car-safe new-event)))
           (vkbd-log "Translate Event: new-event=%s" new-event)
           (cond
