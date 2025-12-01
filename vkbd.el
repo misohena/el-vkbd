@@ -1761,7 +1761,7 @@ Return an empty vector ([]) to cancel the input event."
         (let* ((new-event (vkbd-read-event-silent
                            nil
                            (when timeout-time
-                             (max 0.01 (- timeout-time (float-time))))))
+                             (max 0.0 (- timeout-time (float-time))))))
                (new-event-type (car-safe new-event)))
           (vkbd-log "Translate Event: new-event=%s" new-event)
           (cond
