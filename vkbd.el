@@ -2821,6 +2821,7 @@ When nil, the title bar is not displayed."
 (defvar vkbd-toggle-native-onscreen-keyboard--backup nil)
 
 (defun vkbd-toggle-native-onscreen-keyboard ()
+  (interactive)
   (when (and (fboundp 'frame-toggle-on-screen-keyboard)
              (boundp 'touch-screen-display-keyboard)
              (boundp 'touch-screen-set-point-commands))
