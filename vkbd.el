@@ -2673,74 +2673,203 @@ Return a list of events corresponding to KEYOBJ."
 ;;;;;;; Insert Buffer Contents
 
 (defun vkbd-insert-text-keyboard (keyboard)
-  (vkbd-insert-text-keyboard-title keyboard)
+  (vkbd-insert-text-keyboard-title-bar keyboard)
   (vkbd-insert-text-keyboard-keys keyboard))
 
 ;;;;;;; Insert Title Bar
 
-(defun vkbd-insert-text-keyboard-title (keyboard)
+(defun vkbd-insert-text-keyboard-title-bar (keyboard)
   (let ((options (vkbd-keyboard-options keyboard)))
-    (vkbd-insert-text-close-button options)
-    (unless (eq (plist-get options :menu-button) 'hide)
-      (vkbd-insert-text-menu-button options))
-    (let ((title (plist-get options :title)))
-      (when (stringp title)
+    (let ((title (vkbd-format-title-bar options)))
+      (when (and (stringp title) (not (string-empty-p title)))
+        (insert title)
         (vkbd-insert-propertized
-         title
-         'face (vkbd-get-face-opt options 'vkbd-text-title-caption)
-         'vkbd-draggable t)))
-    (vkbd-insert-propertized
-     "\n"
-     'face (vkbd-get-face-opt options 'vkbd-text-title-bar)
-     'vkbd-draggable t)
-    (vkbd-insert-text-row-separator options)))
+         "\n"
+         'face (vkbd-get-face-opt options 'vkbd-text-title-bar)
+         'vkbd-draggable t))
+      (vkbd-insert-text-row-separator options))))
 
-(defun vkbd-on-close-button-click (keyboard)
+;; Format
+
+(defcustom vkbd-title-bar-format
+  '((:eval vkbd-title-button-close-format)
+    (:eval vkbd-title-button-menu-format)
+    (:eval vkbd-title-button-extras-format)
+    (:eval vkbd-title-caption-format))
+  "Default format for title bars.
+Converted to a single string by the `format-mode-line' function.
+When nil, the title bar is not displayed."
+  :group 'vkbd-text-style
+  :type '(repeat
+          (choice
+           (const :tag "Close Button" (:eval vkbd-title-button-close-format))
+           (const :tag "Menu Button" (:eval vkbd-title-button-menu-format))
+           (const :tag "Extra Buttons" (:eval vkbd-title-button-extras-format))
+           (const :tag "Title" (:eval vkbd-title-caption-format))
+           (string :tag "Any String")
+           (sexp :tag "Sexp"))))
+
+(defvar vkbd-current-options nil)
+
+(defun vkbd-format-title-bar (options)
+  (let* ((vkbd-current-options options)
+         (format (or (plist-get options :title-bar-format)
+                     vkbd-title-bar-format)))
+    (when format
+      (format-mode-line format))))
+
+;; Title Caption
+
+(defconst vkbd-title-caption-format
+  '(:eval (vkbd-make-title-caption vkbd-current-options)))
+
+(defun vkbd-make-title-caption (options)
+  (let ((title (plist-get options :title)))
+    (when (stringp title)
+      (vkbd-text-key-propertized
+       title
+       'face (vkbd-get-face-opt options 'vkbd-text-title-caption)
+       'vkbd-draggable t))))
+
+;; Close Button
+
+(defcustom vkbd-title-button-close-caption "  x  "
+  "Close button text."
+  :group 'vkbd-text-style
+  :type 'string)
+
+(defcustom vkbd-title-button-close-format
+  '(:eval (vkbd-make-title-bar-button
+           vkbd-current-options
+           vkbd-title-button-close-caption
+           #'vkbd-title-button-close-on-click
+           (vkbd-msg "Close")))
+  "Close button format."
+  :group 'vkbd-text-style
+  :type 'sexp)
+
+(defun vkbd-title-button-close-on-click (keyboard)
   (interactive (list (vkbd-guess-current-keyboard)))
-  (vkbd-log "on-close-button-click")
+  (vkbd-log "Button: on-close-button-click")
   (when (vkbd-keyboard-p keyboard)
     (vkbd-delete-keyboard--internal keyboard 'close-button)))
 
-(defun vkbd-on-menu-button-click (keyboard)
+;; Menu Button
+
+(defcustom vkbd-title-button-menu-caption "  =  "
+  "Menu button text."
+  :group 'vkbd-text-style
+  :type 'string)
+
+(defcustom vkbd-title-button-menu-format
+  '(:eval (vkbd-make-title-bar-button
+           vkbd-current-options
+           vkbd-title-button-menu-caption
+           #'vkbd-title-button-menu-on-click
+           (vkbd-msg "Menu")))
+  "Menu button format."
+  :group 'vkbd-text-style
+  :type 'sexp)
+
+(defun vkbd-title-button-menu-on-click (keyboard)
   (interactive (list (vkbd-guess-current-keyboard)))
-  (vkbd-log "on-menu-button-click")
+  (vkbd-log "Button: on-menu-button-click")
   (when (vkbd-keyboard-p keyboard)
     (unwind-protect
         (vkbd-open-keyboard-menu keyboard last-command-event)
       (vkbd-select-target-frame keyboard))))
 
-(defconst vkbd-text-keyboard-close-button-caption "  x  ")
-(defconst vkbd-text-keyboard-menu-button-caption "  =  ")
+;; Extra Buttons
 
-(defun vkbd-insert-text-close-button (options)
-  (vkbd-insert-text-title-button options
-                                 vkbd-text-keyboard-close-button-caption
-                                 #'vkbd-on-close-button-click
-                                 (vkbd-msg "Close")))
+(defcustom vkbd-title-button-extras
+  ;; TODO: Use keymap?
+  `(("  v  " "Layout 10x7"
+     vkbd-set-keyboard-layout-10x7)
+    ("  ^  " "Layout special-keys-only"
+     vkbd-set-keyboard-layout-special-keys-only)
+    ,@(when (eq system-type 'android)
+        '(("  #  " "Toggle Native On-Screen Keyboard"
+           vkbd-toggle-native-onscreen-keyboard))))
+  "Extra buttons on title bar."
+  :group 'vkbd-text-style
+  :type '(repeat
+          :tag "Extra Buttons"
+          (list :tag "Button"
+                (string :tag "Caption")
+                (string :tag "Help echo")
+                (function :tag "Command"))))
 
-(defun vkbd-insert-text-menu-button (options)
-  (vkbd-insert-text-title-button options
-                                 vkbd-text-keyboard-menu-button-caption
-                                 #'vkbd-on-menu-button-click
-                                 (vkbd-msg "Menu")))
+(defconst vkbd-title-button-extras-format
+  '(:eval (vkbd-make-title-button-extras
+           vkbd-current-options)))
 
-(defun vkbd-insert-text-title-button (options caption command help-echo)
-  (vkbd-insert-propertized
-   caption
-   'face (vkbd-get-face-opt options 'vkbd-text-title-button)
-   'pointer 'hand
-   'help-echo help-echo
-   'keymap
-   (let ((km (make-sparse-keymap)))
-     (define-key km [down-mouse-1] #'ignore)
-     (define-key km [mouse-1] command)
-     (define-key km [touchscreen-begin] #'ignore)
-     (define-key km [touchscreen-update] #'ignore)
-     (define-key km [touchscreen-end] command)
-     (define-key km (kbd "RET") command)
-     (define-key km (kbd "SPC") command)
-     km))
-  (vkbd-insert-text-title-button-separator options))
+(defun vkbd-make-title-button-extras (options)
+  (let ((extras (or (plist-get options :title-extra-buttons)
+                    vkbd-title-button-extras)))
+    (cl-loop for (caption help-echo command) in extras
+             concat (vkbd-make-title-bar-button options
+                                                caption command help-echo))))
+
+;; Native On-Screen Keyboard Toggle Button
+
+(defvar vkbd-toggle-native-onscreen-keyboard--backup nil)
+
+(defun vkbd-toggle-native-onscreen-keyboard ()
+  (when (and (fboundp 'frame-toggle-on-screen-keyboard)
+             (boundp 'touch-screen-display-keyboard)
+             (boundp 'touch-screen-set-point-commands))
+    (if vkbd-toggle-native-onscreen-keyboard--backup
+        ;; Show
+        (progn
+          (seq-setq (touch-screen-display-keyboard
+                     touch-screen-set-point-commands)
+                    vkbd-toggle-native-onscreen-keyboard--backup)
+          (frame-toggle-on-screen-keyboard (selected-frame) nil))
+      ;; Hide
+      (setq vkbd-toggle-native-onscreen-keyboard--backup
+            (list touch-screen-display-keyboard
+                  touch-screen-set-point-commands))
+      (frame-toggle-on-screen-keyboard (selected-frame) t))))
+
+;; Button Common
+
+(defalias 'vkbd-text-title-bar-button-map
+  (let ((km (make-sparse-keymap)))
+    (define-key km [down-mouse-1] #'ignore)
+    (define-key km [mouse-1] #'vkbd-on-title-bar-button-click)
+    (define-key km [touchscreen-begin] #'ignore)
+    (define-key km [touchscreen-update] #'ignore)
+    (define-key km [touchscreen-end] #'vkbd-on-title-bar-button-click)
+    (define-key km (kbd "RET") #'vkbd-on-title-bar-button-click)
+    (define-key km (kbd "SPC") #'vkbd-on-title-bar-button-click)
+    km))
+
+(defun vkbd-make-title-bar-button (options caption command help-echo)
+  (concat
+   (vkbd-text-key-propertized
+    caption
+    'vkbd-button-command command
+    'face (vkbd-get-face-opt options 'vkbd-text-title-button)
+    'pointer 'hand
+    'help-echo help-echo
+    'keymap #'vkbd-text-title-bar-button-map)
+   (vkbd-make-text-title-button-separator options)))
+
+(defun vkbd-on-title-bar-button-click ()
+  (interactive)
+  (let* ((posn (event-start last-command-event))
+         (window (posn-window posn))
+         (point (posn-point posn)))
+    (when (and (windowp window) (integerp point))
+      (with-current-buffer (window-buffer window)
+        (let ((command (get-text-property point 'vkbd-button-command)))
+          (when (commandp command)
+            (call-interactively command)))))))
+
+;; Separator
+
+(defconst vkbd-title-separator-format
+  '(:eval (vkbd-make-text-title-button-separator vkbd-current-options)))
 
 (defcustom vkbd-text-title-button-separator-width 0.25
   "Width of spacing between buttons (horizontal spacing between buttons)."
@@ -2749,19 +2878,25 @@ Return a list of events corresponding to KEYOBJ."
 
 (defconst vkbd-text-title-button-separator-display 'space) ;; or "|"
 
-(defun vkbd-insert-text-title-button-separator (options)
-  (vkbd-insert-text-separator options
-                              :text-title-button-separator-width
-                              vkbd-text-title-button-separator-width
-                              vkbd-text-title-button-separator-display
-                              'vkbd-text-title-button-separator))
+(defun vkbd-make-text-title-button-separator (options)
+  (vkbd-make-text-separator options
+                            :text-title-button-separator-width
+                            vkbd-text-title-button-separator-width
+                            vkbd-text-title-button-separator-display
+                            'vkbd-text-title-button-separator))
 
 (defun vkbd-insert-text-separator (options
                                    width-key default-width display-spec
                                    face)
+  (insert (vkbd-make-text-separator options
+                                    width-key default-width display-spec face)))
+
+(defun vkbd-make-text-separator (options
+                                 width-key default-width display-spec
+                                 face)
   (let ((width (or (plist-get options width-key) default-width)))
     (when (and (numberp width) (> width 0))
-      (vkbd-insert-propertized
+      (vkbd-text-key-propertized
        " "
        'display
        (if (stringp display-spec)
@@ -3265,6 +3400,20 @@ existing keyboards.")
 
 (defun vkbd-layout-list ()
   vkbd-layout-list)
+
+(defun vkbd-make-keyboard-layout-set-command (layout-name)
+  (lambda (keyboard)
+    (interactive (list (vkbd-guess-current-keyboard)))
+    (vkbd-set-keyboard-layout keyboard layout-name)))
+
+(dolist (layout vkbd-layout-list)
+  (when (symbolp layout)
+    (let ((name (symbol-name layout)))
+      (when (string-match "\\`vkbd-layout-\\(.*\\)\\'" name)
+        (let ((fun-name
+               (format "vkbd-set-keyboard-layout-%s" (match-string 1 name))))
+          (defalias (intern fun-name)
+            (vkbd-make-keyboard-layout-set-command layout)))))))
 
 (defcustom vkbd-default-keyboard-layout 'vkbd-layout-10x7
   "Default keyboard layout to use.
