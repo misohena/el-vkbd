@@ -2788,12 +2788,12 @@ When nil, the title bar is not displayed."
 
 (defcustom vkbd-title-button-extras
   ;; TODO: Use keymap?
-  `(("  v  " "Layout 10x7"
+  `(("  O  " "Layout 10x7"
      vkbd-set-keyboard-layout-10x7)
-    ("  ^  " "Layout special-keys-only"
+    ("  o  " "Layout special-keys-only"
      vkbd-set-keyboard-layout-special-keys-only)
     ,@(when (eq system-type 'android)
-        '(("  #  " "Toggle Native On-Screen Keyboard"
+        '(("  _  " "Toggle Native On-Screen Keyboard"
            vkbd-toggle-native-onscreen-keyboard))))
   "Extra buttons on title bar."
   :group 'vkbd-text-style
