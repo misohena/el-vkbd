@@ -577,6 +577,7 @@ dynamically bind this variable.")
 (defun vkbd-guess-current-keyboard ()
   "Return the keyboard object currently being operated on."
   (or vkbd-current-keyboard
+      (vkbd-event-to-keyboard last-command-event)
       (vkbd-event-to-keyboard last-input-event)
       (vkbd-keyboard-frame-keyboard last-event-frame)
       (error "No virtual keyboard")))
@@ -2648,18 +2649,18 @@ Return a list of events corresponding to KEYOBJ."
      'vkbd-draggable t)
     (vkbd-insert-text-row-separator options)))
 
-(defun vkbd-on-close-button-click (event)
-  (interactive "e")
+(defun vkbd-on-close-button-click (keyboard)
+  (interactive (list (vkbd-guess-current-keyboard)))
   (vkbd-log "on-close-button-click")
-  (when-let* ((keyboard (vkbd-event-to-keyboard event)))
+  (when (vkbd-keyboard-p keyboard)
     (vkbd-delete-keyboard--internal keyboard 'close-button)))
 
-(defun vkbd-on-menu-button-click (event)
-  (interactive "e")
+(defun vkbd-on-menu-button-click (keyboard)
+  (interactive (list (vkbd-guess-current-keyboard)))
   (vkbd-log "on-menu-button-click")
-  (when-let* ((keyboard (vkbd-event-to-keyboard event)))
+  (when (vkbd-keyboard-p keyboard)
     (unwind-protect
-        (vkbd-open-keyboard-menu keyboard event)
+        (vkbd-open-keyboard-menu keyboard last-command-event)
       (vkbd-select-target-frame keyboard))))
 
 (defconst vkbd-text-keyboard-close-button-caption "  x  ")
@@ -2690,6 +2691,8 @@ Return a list of events corresponding to KEYOBJ."
      (define-key km [touchscreen-begin] #'ignore)
      (define-key km [touchscreen-update] #'ignore)
      (define-key km [touchscreen-end] command)
+     (define-key km (kbd "RET") command)
+     (define-key km (kbd "SPC") command)
      km))
   (vkbd-insert-text-title-button-separator options))
 
