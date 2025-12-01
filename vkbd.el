@@ -2831,12 +2831,15 @@ When nil, the title bar is not displayed."
           (seq-setq (touch-screen-display-keyboard
                      touch-screen-set-point-commands)
                     vkbd-toggle-native-onscreen-keyboard--backup)
-          (frame-toggle-on-screen-keyboard (selected-frame) nil))
+          (setq vkbd-toggle-native-onscreen-keyboard--backup nil)
+          (frame-toggle-on-screen-keyboard (selected-frame) nil)
+          (message "Enable on-screen keyboard"))
       ;; Hide
       (setq vkbd-toggle-native-onscreen-keyboard--backup
             (list touch-screen-display-keyboard
                   touch-screen-set-point-commands))
-      (frame-toggle-on-screen-keyboard (selected-frame) t))))
+      (frame-toggle-on-screen-keyboard (selected-frame) t)
+      (message "Disable on-screen keyboard"))))
 
 ;; Button Common
 
