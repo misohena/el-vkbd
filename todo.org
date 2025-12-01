@@ -3,9 +3,6 @@
 #+AUTHOR: AKIYAMA Kouhei
 
 * Inbox
-** TODO window表示時でもカーソルを消す
-vkbd-keyboard-buffer-local-variablesを追加してcursor-typeにnilを指定した。
-
 ** TODO 通常のキーとしてレイアウトを切り替えるボタンを置けるようにする
 ** TODO タイトルバーにレイアウトを切り替えるボタンを置けるようにする
 ** TODO タイトルバーに並べるボタンをカスタマイズできるようにする
@@ -983,4 +980,8 @@ self-insert-commandを対象バッファへ切り替え後のself-insertにリ�
 ……切りがないから止めよう。単に入力対象バッファへ移動するだけで十分だ。
 
 害になりそうなコマンドを vkbd-select-input-target へリマップしておく。
+
+** DONE window表示時でもカーソルを消す
+CLOSED: [2025-12-01 Mon 19:45]
+vkbd-keyboard-buffer-local-variablesを追加してcursor-typeにnilを指定した。
 

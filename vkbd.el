@@ -1362,6 +1362,12 @@ visibility constraints defined by `vkbd-keyboard-frame-keep-visible-margins'."
   "<remap> <split-window-horizontally>" #'vkbd-select-input-target
   )
 
+(defcustom vkbd-keyboard-buffer-local-variables
+  '((cursor-type . nil))
+  "An alist of local variables and values that apply to keyboard buffers."
+  :type 'alist
+  :group 'vkbd)
+
 (defcustom vkbd-keyboard-buffer-line-spacing nil
   "`line-spacing' value in keyboard buffers."
   :type '(choice (const :tag "Global value" global)
@@ -1391,6 +1397,11 @@ KEYBOARD is a keyboard object."
           (setq-local line-spacing spec)))
       ;; Make buffer contents
       (vkbd-make-keyboard-buffer-contents keyboard)
+
+      ;; Make local variables
+      (dolist (var-val (or (plist-get options :buffer-local-variables)
+                           vkbd-keyboard-buffer-local-variables))
+        (set (make-local-variable (car var-val)) (cdr var-val)))
 
       ;; Add kill-buffer-hook
       (add-hook 'kill-buffer-hook
