@@ -2837,7 +2837,9 @@ When nil, the title bar is not displayed."
       ;; Hide
       (setq vkbd-toggle-native-onscreen-keyboard--backup
             (list touch-screen-display-keyboard
-                  touch-screen-set-point-commands))
+                  touch-screen-set-point-commands)
+            touch-screen-display-keyboard nil
+            touch-screen-set-point-commands nil)
       (frame-toggle-on-screen-keyboard (selected-frame) t)
       (message "Disable on-screen keyboard"))))
 
