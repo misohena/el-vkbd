@@ -862,10 +862,7 @@ dynamically bind this variable.")
 
       (set-window-dedicated-p window t)
 
-      (fit-window-to-buffer window)
-
-      (let ((side (vkbd-keyboard-window-side keyboard)))
-        (window-preserve-size window (memq side '(left right)) t))
+      (vkbd-fit-keyboard-container-to-buffer-contents--window keyboard)
 
       (vkbd-start-window-deletion-detection))))
 
@@ -880,7 +877,9 @@ dynamically bind this variable.")
 (defun vkbd-fit-keyboard-container-to-buffer-contents--window (keyboard)
   (let ((window (vkbd-keyboard-property keyboard :window)))
     (when (window-live-p window)
-      (fit-window-to-buffer window))))
+      (fit-window-to-buffer window)
+      (let ((side (vkbd-keyboard-window-side keyboard)))
+        (window-preserve-size window (memq side '(left right)) t)))))
 
 (defun vkbd-select-input-target--window (keyboard)
   (or

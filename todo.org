@@ -1016,3 +1016,8 @@ CLOSED: [2025-12-01 Mon 22:48]
 CLOSED: [2025-12-01 Mon 23:17]
 (customize-group 'vkbd)を起動する。
 
+** DONE レイアウトを切り替えるとwindow-preserve-sizeが解けてしまう
+CLOSED: [2025-12-01 Mon 23:45]
+効果が解けてサイズが変化しやすくなってしまう。
+fit-window-to-buffer呼び出し時は必ずwindow-preserve-sizeもしなければならない。
+
