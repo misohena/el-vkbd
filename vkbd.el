@@ -839,13 +839,20 @@ dynamically bind this variable.")
 
 ;;;;;; Window
 
+(defconst vkbd-keyboard-container--window-parameters
+  '((no-delete-other-windows . t)
+    (no-other-window . t)))
+
 (defun vkbd-make-keyboard-container--window (keyboard)
   (let ((window (display-buffer-in-side-window
                  (vkbd-keyboard-buffer keyboard)
                  (vkbd-keyboard-container--window-display-alist keyboard))))
     (when window
       (setf (vkbd-keyboard-property keyboard :window) window)
-      (set-window-parameter window 'no-delete-other-windows t)
+
+      (dolist (param-value vkbd-keyboard-container--window-parameters)
+        (set-window-parameter window (car param-value) (cdr param-value)))
+
       (set-window-dedicated-p window t)
 
       (fit-window-to-buffer window)
