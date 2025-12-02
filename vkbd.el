@@ -175,7 +175,10 @@ If the global keyboard does not exist or is no longer live, create a new
 one."
   (interactive)
   (when (and vkbd-global-keyboard
-             (not (vkbd-keyboard-live-p vkbd-global-keyboard)))
+             (or
+              (not (vkbd-keyboard-live-p vkbd-global-keyboard))
+              (not (vkbd-keyboard-can-input-to-frame-p vkbd-global-keyboard
+                                                       (selected-frame)))))
     (vkbd-delete-keyboard vkbd-global-keyboard)
     (setq vkbd-global-keyboard nil))
   (unless vkbd-global-keyboard
@@ -194,9 +197,12 @@ one."
 (defun vkbd-toggle-global-keyboard ()
   "Toggle the global keyboard."
   (interactive)
-  (if (vkbd-global-keyboard-open-p)
-      (vkbd-close-global-keyboard)
-    (vkbd-open-global-keyboard)))
+  (if (or (not (vkbd-global-keyboard-open-p))
+          (not (vkbd-keyboard-live-p vkbd-global-keyboard))
+          (not (vkbd-keyboard-can-input-to-frame-p vkbd-global-keyboard
+                                                   (selected-frame))))
+      (vkbd-open-global-keyboard)
+    (vkbd-close-global-keyboard)))
 
 
 ;;;; Keyboards
@@ -754,6 +760,45 @@ dynamically bind this variable.")
      (vkbd-select-input-target--frame keyboard))
     ('window
      (vkbd-select-input-target--window keyboard))))
+
+(defun vkbd-keyboard-parent-frame (keyboard)
+  "Return the parent frame of the container displaying KEYBOARD."
+  (when (vkbd-keyboard-live-p keyboard)
+    (pcase (vkbd-keyboard-container-type keyboard)
+      ('child-frame
+       (let ((frame (vkbd-keyboard-frame keyboard)))
+         (when (frame-live-p frame)
+           (frame-parent frame))))
+      ('independent-frame
+       nil)
+      ('window
+       (let ((window (vkbd-keyboard-property keyboard :window)))
+         (when (window-live-p window)
+           (window-frame window)))))))
+
+(defun vkbd-keyboard-displayed-frame (keyboard)
+  "Return the frame where KEYBOARD is displayed."
+  (when (vkbd-keyboard-live-p keyboard)
+    (pcase (vkbd-keyboard-container-type keyboard)
+      ('child-frame
+       (vkbd-keyboard-frame keyboard))
+      ('independent-frame
+       (vkbd-keyboard-frame keyboard))
+      ('window
+       (let ((window (vkbd-keyboard-property keyboard :window)))
+         (when (window-live-p window)
+           (window-frame window)))))))
+
+(defun vkbd-keyboard-can-input-to-frame-p (keyboard frame)
+  "Return non-nil if KEYBOARD can input to FRAME."
+  (when (vkbd-keyboard-live-p keyboard)
+    (pcase (vkbd-keyboard-container-type keyboard)
+      ('child-frame
+       (eq (vkbd-keyboard-parent-frame keyboard) frame))
+      ('independent-frame
+       t)
+      ('window
+       (eq (vkbd-keyboard-parent-frame keyboard) frame)))))
 
 ;;;;;; Child Frame
 
@@ -4008,8 +4053,17 @@ See `frame-toggle-on-screen-keyboard' for the interface details."
           ;; Hide native OSK if shown
           (funcall old-fun frame hide))
       ;; Show
-      ;; TODO: Consider FRAME argument
-      (vkbd-open-global-keyboard))))
+      (unless frame (setq frame (selected-frame)))
+      (when (and (vkbd-global-keyboard-open-p)
+                 (not (vkbd-keyboard-can-input-to-frame-p vkbd-global-keyboard
+                                                          frame)))
+        (vkbd-close-global-keyboard))
+      (let ((old-frame (selected-frame)))
+        (select-frame frame)
+        (unwind-protect
+            (vkbd-open-global-keyboard)
+          (select-frame old-frame))))
+    t))
 
 ;;;;; Show/Hide native on-screen keyboard
 
