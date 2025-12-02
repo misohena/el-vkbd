@@ -346,7 +346,14 @@ This function is for debugging purposes."
   (vkbd-keyboard-property keyboard :buffer))
 
 (defun vkbd-keyboard-frame (keyboard)
-  "Return the frame associated with KEYBOARD."
+  "Return the frame associated with KEYBOARD.
+
+If there is a dedicated frame to contain the keyboard buffer, it returns
+it. If not, it returns nil.
+
+This does not return the frame in which the keyboard is displayed. To
+get the frame in which the keyboard is displayed, use
+`vkbd-keyboard-displayed-frame'."
   (vkbd-keyboard-property keyboard :frame))
 
 (defun vkbd-keyboard-key-repeat-state (keyboard)
@@ -691,6 +698,8 @@ dynamically bind this variable.")
 ;; - `independent-frame' : The keyboard is displayed as an independent frame.
 ;; - `window' : The keyboard is displayed as a window in an existing frame.
 
+;;;;;; Keyboard Container Types
+
 (defconst vkbd-keyboard-container-type-list
   '(child-frame
     independent-frame
@@ -702,6 +711,29 @@ dynamically bind this variable.")
 
 (defun vkbd-default-keyboard-container-type ()
   (car vkbd-keyboard-container-type-list))
+
+;;;;;; Keyboard Container Type Menu
+
+(defun vkbd-read-keyboard-container-type-from-menu (keyboard)
+  (car (x-popup-menu
+        t (car (vkbd-make-keyboard-container-type-menu keyboard)))))
+
+(defun vkbd-make-keyboard-container-type-selector (keyboard type)
+  (lambda () (interactive) (vkbd-set-keyboard-container-type keyboard type)))
+
+(defun vkbd-make-keyboard-container-type-menu (keyboard)
+  (let ((current-type (vkbd-keyboard-container-type keyboard))
+        (menu (make-sparse-keymap (vkbd-msg "Select a type"))))
+    (dolist (type vkbd-keyboard-container-type-list)
+      (when (symbolp type)
+        (define-key-after
+          menu (vector type)
+          (list 'menu-item (symbol-name type)
+                (vkbd-make-keyboard-container-type-selector keyboard type)
+                :button `(:radio . ,(eq type current-type))))))
+    (list menu)))
+
+;;;;;; Keyboard Container Functions
 
 (defun vkbd-make-keyboard-container (keyboard)
   (vkbd-log "Container: Make %s" (vkbd-keyboard-container-type keyboard))
@@ -780,94 +812,6 @@ dynamically bind this variable.")
        t)
       ('window
        (eq (vkbd-keyboard-container-parent-frame keyboard) frame)))))
-
-;;;;;; Child Frame
-
-(defun vkbd-make-keyboard-container--child-frame (keyboard)
-  ;; 注意: PARENT-FRAMEはKeyboardフレームであってはならない。
-  (let ((parent-frame (vkbd-last-non-keyboard-frame)))
-    (vkbd-make-keyboard-container--frame keyboard parent-frame)))
-
-(defun vkbd-delete-keyboard-container--child-frame (keyboard)
-  (vkbd-delete-keyboard-container--frame keyboard))
-
-;;;;;; Independent Frame
-
-(defun vkbd-make-keyboard-container--independent-frame (keyboard)
-  (vkbd-make-keyboard-container--frame keyboard nil))
-
-(defun vkbd-delete-keyboard-container--independent-frame (keyboard)
-  (vkbd-delete-keyboard-container--frame keyboard))
-
-;;;;;; Frame Common
-
-(defun vkbd-make-keyboard-container--frame (keyboard parent-frame)
-  (let ((frame (vkbd-make-keyboard-frame keyboard parent-frame)))
-    ;; Connect the KEYBOARD buffer and frame.
-    (vkbd-set-keyboard-buffer-to-window (frame-root-window frame)
-                                        (vkbd-keyboard-buffer keyboard))
-    ;; Connect KEYBOARD and frame.
-    (set-frame-parameter frame 'vkbd-keyboard keyboard)
-    (setf (vkbd-keyboard-property keyboard :frame) frame)
-
-    ;; Modify the frame size and position.
-    (vkbd-fit-keyboard-frame-size-to-buffer-contents
-     (vkbd-keyboard-options keyboard) frame)
-    (vkbd-initialize-keyboard-frame-position keyboard)
-
-    (when parent-frame
-      (redirect-frame-focus frame parent-frame))
-
-    (vkbd-start-window-deletion-detection)
-    frame))
-
-(defun vkbd-delete-keyboard-container--frame (keyboard)
-  (when-let* ((frame (vkbd-keyboard-frame keyboard)))
-    ;; Deselect FRAME and remove input focus from it.
-    ;; (削除した後の選択フレームがFRAMEであってはならない。
-    ;; 直後のmake-keyboard-container時にFRAMEの子フレームを作ってしま
-    ;; う可能性があるから)
-    (when (eq (selected-frame) frame)
-      (when-let* ((prev-frame (vkbd-previous-non-keyboard-frame)))
-        (select-frame prev-frame)))
-
-    (setf (vkbd-keyboard-property keyboard :frame) nil) ;; Prevent re-entry
-
-    (when (vkbd-frame-live-p frame)
-      ;; Disconnect the KEYBOARD buffer and frame.
-      (set-window-dedicated-p (frame-root-window frame) nil)
-
-      ;; Disconnect KEYBOARD and frame.
-      (set-frame-parameter frame 'vkbd-keyboard nil)
-
-      ;; Delete frame.
-      ;; Note: The buffer associated with the dedicated window is
-      ;; deleted at this point.
-      ;; Note: `vkbd-on-window-change' may be called.
-      (vkbd-delete-frame frame))))
-
-(defun vkbd-fit-keyboard-container-to-buffer-contents--frame (keyboard)
-  (vkbd-fit-keyboard-frame-size-to-buffer-contents
-   (vkbd-keyboard-options keyboard)
-   (vkbd-keyboard-frame keyboard)))
-
-(defun vkbd-select-input-target--frame (keyboard)
-  (let ((target-frame (vkbd-focus-input-target-frame keyboard)))
-    ;; Windowsでは上(`vkbd-focus-input-target-frame'、つまり
-    ;; `select-frame-set-input-focus')だけでカレントバッファも入力対象
-    ;; バッファに移るが、Androidでは`selected-frame'だけ切り替わってカレ
-    ;; ントバッファは変わらない。
-    ;;
-    ;; `vkbd-select-input-target--window'でも説明しているように
-    ;; カレントバッファも切り替えないとコマンドの解決がうまくいかない。
-    ;;
-    ;; 仕方ないのでカレントバッファも強制的に切り替える。
-    (when target-frame
-      (let ((window (frame-selected-window target-frame)))
-        (when (window-live-p window)
-          (let ((buffer (window-buffer window)))
-            (when (buffer-live-p buffer)
-              (set-buffer buffer))))))))
 
 
 ;;;;;; Window
@@ -1059,29 +1003,95 @@ that no longer have a valid window displaying them."
     num-valid-keyboards))
 
 
-;;;;;; Keyboard Container Type Menu
+;;;;;; Child Frame
 
-(defun vkbd-read-keyboard-container-type-from-menu (keyboard)
-  (car (x-popup-menu
-        t (car (vkbd-make-keyboard-container-type-menu keyboard)))))
+(defun vkbd-make-keyboard-container--child-frame (keyboard)
+  ;; 注意: PARENT-FRAMEはKeyboardフレームであってはならない。
+  (let ((parent-frame (vkbd-last-non-keyboard-frame)))
+    (vkbd-make-keyboard-container--frame keyboard parent-frame)))
 
-(defun vkbd-make-keyboard-container-type-selector (keyboard type)
-  (lambda () (interactive) (vkbd-set-keyboard-container-type keyboard type)))
+(defun vkbd-delete-keyboard-container--child-frame (keyboard)
+  (vkbd-delete-keyboard-container--frame keyboard))
 
-(defun vkbd-make-keyboard-container-type-menu (keyboard)
-  (let ((current-type (vkbd-keyboard-container-type keyboard))
-        (menu (make-sparse-keymap (vkbd-msg "Select a type"))))
-    (dolist (type vkbd-keyboard-container-type-list)
-      (when (symbolp type)
-        (define-key-after
-          menu (vector type)
-          (list 'menu-item (symbol-name type)
-                (vkbd-make-keyboard-container-type-selector keyboard type)
-                :button `(:radio . ,(eq type current-type))))))
-    (list menu)))
+;;;;;; Independent Frame
 
+(defun vkbd-make-keyboard-container--independent-frame (keyboard)
+  (vkbd-make-keyboard-container--frame keyboard nil))
 
-;;;;; Keyboard Frames
+(defun vkbd-delete-keyboard-container--independent-frame (keyboard)
+  (vkbd-delete-keyboard-container--frame keyboard))
+
+;;;;;; Frame Common
+
+(defun vkbd-make-keyboard-container--frame (keyboard parent-frame)
+  (let ((frame (vkbd-make-keyboard-frame keyboard parent-frame)))
+    ;; Connect the KEYBOARD buffer and frame.
+    (vkbd-set-keyboard-buffer-to-window (frame-root-window frame)
+                                        (vkbd-keyboard-buffer keyboard))
+    ;; Connect KEYBOARD and frame.
+    (set-frame-parameter frame 'vkbd-keyboard keyboard)
+    (setf (vkbd-keyboard-property keyboard :frame) frame)
+
+    ;; Modify the frame size and position.
+    (vkbd-fit-keyboard-frame-size-to-buffer-contents
+     (vkbd-keyboard-options keyboard) frame)
+    (vkbd-initialize-keyboard-frame-position keyboard)
+
+    (when parent-frame
+      (redirect-frame-focus frame parent-frame))
+
+    (vkbd-start-window-deletion-detection)
+    frame))
+
+(defun vkbd-delete-keyboard-container--frame (keyboard)
+  (when-let* ((frame (vkbd-keyboard-frame keyboard)))
+    ;; Deselect FRAME and remove input focus from it.
+    ;; (削除した後の選択フレームがFRAMEであってはならない。
+    ;; 直後のmake-keyboard-container時にFRAMEの子フレームを作ってしま
+    ;; う可能性があるから)
+    (when (eq (selected-frame) frame)
+      (when-let* ((prev-frame (vkbd-previous-non-keyboard-frame)))
+        (select-frame prev-frame)))
+
+    (setf (vkbd-keyboard-property keyboard :frame) nil) ;; Prevent re-entry
+
+    (when (vkbd-frame-live-p frame)
+      ;; Disconnect the KEYBOARD buffer and frame.
+      (set-window-dedicated-p (frame-root-window frame) nil)
+
+      ;; Disconnect KEYBOARD and frame.
+      (set-frame-parameter frame 'vkbd-keyboard nil)
+
+      ;; Delete frame.
+      ;; Note: The buffer associated with the dedicated window is
+      ;; deleted at this point.
+      ;; Note: `vkbd-on-window-change' may be called.
+      (vkbd-delete-frame frame))))
+
+(defun vkbd-fit-keyboard-container-to-buffer-contents--frame (keyboard)
+  (vkbd-fit-keyboard-frame-size-to-buffer-contents
+   (vkbd-keyboard-options keyboard)
+   (vkbd-keyboard-frame keyboard)))
+
+(defun vkbd-select-input-target--frame (keyboard)
+  (let ((target-frame (vkbd-focus-input-target-frame keyboard)))
+    ;; Windowsでは上(`vkbd-focus-input-target-frame'、つまり
+    ;; `select-frame-set-input-focus')だけでカレントバッファも入力対象
+    ;; バッファに移るが、Androidでは`selected-frame'だけ切り替わってカレ
+    ;; ントバッファは変わらない。
+    ;;
+    ;; `vkbd-select-input-target--window'でも説明しているように
+    ;; カレントバッファも切り替えないとコマンドの解決がうまくいかない。
+    ;;
+    ;; 仕方ないのでカレントバッファも強制的に切り替える。
+    (when target-frame
+      (let ((window (frame-selected-window target-frame)))
+        (when (window-live-p window)
+          (let ((buffer (window-buffer window)))
+            (when (buffer-live-p buffer)
+              (set-buffer buffer))))))))
+
+;;;;;;; Frame Creation
 
 (defcustom vkbd-keyboard-frame-parameters
   ;; See: (info "(elisp) Window Frame Parameters")
@@ -1219,8 +1229,12 @@ SIZE is a cons cell (WIDTH . HEIGHT) specifying the frame size in pixels."
   (frame-parameter frame 'vkbd-keyboard))
 
 (defun vkbd-keyboard-frame-p (frame)
-  (not (null (vkbd-keyboard-frame-keyboard frame))))
+  "Return non-nil if FRAME is a keyboard frame.
 
+A keyboard frame is a frame associated with a keyboard object and is
+a dedicated frame solely for displaying a keyboard buffer.  This does not
+include frames containing windows when the container type is window."
+  (not (null (vkbd-keyboard-frame-keyboard frame))))
 
 (defun vkbd-set-keyboard-buffer-to-window (window buffer)
   "Set BUFFER to WINDOW for displaying the keyboard."
@@ -1232,7 +1246,7 @@ SIZE is a cons cell (WIDTH . HEIGHT) specifying the frame size in pixels."
       (set-window-buffer window buffer)
       (set-window-dedicated-p window t))))
 
-;; Position & Size Control
+;;;;;;; Frame Position & Size Control
 
 ;; `vkbd-text-key-common' faceに:box属性を使うとその:line-widthの分だ
 ;; け計測サイズが足りなくなる現象があるので、その場合はこれで調整する
@@ -1342,13 +1356,19 @@ visibility constraints defined by `vkbd-keyboard-frame-keep-visible-margins'."
     ;; TODO: Limit coordinates to within the screen area
     xy))
 
-;; Focus Control
+;;;;;;; Frame Focus Control
 
 (defun vkbd-last-non-keyboard-frame ()
+  "Return the last selected non-keyboard frame.
+If the current `selected-frame' is a non-keyboard frame, return it.
+A keyboard frame is a frame for which `vkbd-keyboard-frame-p' returns non-nil."
   (vkbd-last-selected-frame
    (lambda (frame) (not (vkbd-keyboard-frame-p frame)))))
 
 (defun vkbd-previous-non-keyboard-frame ()
+  "Return the previously selected non-keyboard frame.
+Never returns the current `selected-frame'.
+A keyboard frame is a frame for which `vkbd-keyboard-frame-p' returns non-nil."
   (vkbd-previous-selected-frame
    (lambda (frame) (not (vkbd-keyboard-frame-p frame)))))
 
@@ -1365,9 +1385,13 @@ visibility constraints defined by `vkbd-keyboard-frame-keep-visible-margins'."
     (select-frame-set-input-focus frame nil)))
 
 (defun vkbd-keyboard-input-target-frame (_keyboard)
+  "Return the frame to which key events generated by KEYBOARD are sent.
+Never returns a keyboard frame (a frame for which `vkbd-keyboard-frame-p'
+returns non-nil)."
   (vkbd-last-non-keyboard-frame))
 
 (defun vkbd-focus-input-target-frame (keyboard)
+  "Select the frame to which key events generated by KEYBOARD are sent."
   (interactive)
   (when-let* ((target-frame (vkbd-keyboard-input-target-frame keyboard)))
     (vkbd-log "Select Parent Frame: (before)selected frame=%s buffer=%s"
