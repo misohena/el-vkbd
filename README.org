@@ -95,6 +95,9 @@ Frame settings:
 - `vkbd-recycle-frames' : Whether to pool and reuse frames (you can delete all pooled frames with M-x vkbd-delete-all-unused-frames)
 - `vkbd-keyboard-frame-keep-visible-margins' : Margins to keep visible when dragging the virtual keyboard frame
 
+Buffer settings:
+- `vkbd-keyboard-buffer-local-variables' : Buffer local constant variables
+
 Default layout & style:
 - `vkbd-default-keyboard-layout' : Default layout
 - `vkbd-default-keyboard-style' (currently only text01 style is available)
@@ -106,6 +109,7 @@ Text style settings:
   - `vkbd-text-column-separator-width' : Width of spacing between columns (horizontal spacing between keys)
   - `vkbd-text-row-separator-height' : Height of spacing between rows (vertical spacing between keys)
   - `vkbd-keyboard-buffer-line-spacing' : `line-spacing' value in keyboard buffers
+  - `vkbd-text-title-button-separator-width' : Width of spacing between buttons on the title bar (horizontal spacing between buttons)
 - Faces
   - `vkbd-text-keyboard' : Entire keyboard
   - `vkbd-text-key-common' : Key area
@@ -119,6 +123,23 @@ Text style settings:
   - `vkbd-text-title-button' : Title bar buttons
   - `vkbd-text-title-button-separator' : Spacing between buttons (horizontal)
   - `vkbd-text-title-caption' : Title bar text
+
+Title bar:
+  - `vkbd-title-bar-format'
+  - `vkbd-title-button-close-caption'
+  - `vkbd-title-button-close-format'
+  - `vkbd-title-button-menu-caption'
+  - `vkbd-title-button-menu-format'
+  - `vkbd-title-button-extras'
+
+Key repeat:
+  - `vkbd-key-repeat-enabled'
+  - `vkbd-key-repeat-delay'
+  - `vkbd-key-repeat-interval'
+
+Input mechanisms:
+  - `vkbd-replace-read-functions'
+
 
 ** How to Adjust Size
 
