@@ -48,6 +48,12 @@
   :prefix "vkbd-"
   :group 'vkbd)
 
+(defgroup vkbd-title-bar nil
+  "Title bar in virtual keyboard."
+  :tag "vkbd-title-bar"
+  :prefix "vkbd-"
+  :group 'vkbd)
+
 (defgroup vkbd-development nil
   "For development."
   :tag "vkbd-development"
@@ -2754,7 +2760,7 @@ Return a list of events corresponding to KEYOBJ."
   "Default format for title bars.
 Converted to a single string by the `format-mode-line' function.
 When nil, the title bar is not displayed."
-  :group 'vkbd-text-style
+  :group 'vkbd-title-bar
   :type '(repeat
           (choice
            (const :tag "Close Button" (:eval vkbd-title-button-close-format))
@@ -2790,7 +2796,7 @@ When nil, the title bar is not displayed."
 
 (defcustom vkbd-title-button-close-caption "  x  "
   "Close button text."
-  :group 'vkbd-text-style
+  :group 'vkbd-title-bar
   :type 'string)
 
 (defcustom vkbd-title-button-close-format
@@ -2800,7 +2806,7 @@ When nil, the title bar is not displayed."
            #'vkbd-title-button-close-on-click
            (vkbd-msg "Close")))
   "Close button format."
-  :group 'vkbd-text-style
+  :group 'vkbd-title-bar
   :type 'sexp)
 
 (defun vkbd-title-button-close-on-click (keyboard)
@@ -2813,7 +2819,7 @@ When nil, the title bar is not displayed."
 
 (defcustom vkbd-title-button-menu-caption "  =  "
   "Menu button text."
-  :group 'vkbd-text-style
+  :group 'vkbd-title-bar
   :type 'string)
 
 (defcustom vkbd-title-button-menu-format
@@ -2823,7 +2829,7 @@ When nil, the title bar is not displayed."
            #'vkbd-title-button-menu-on-click
            (vkbd-msg "Menu")))
   "Menu button format."
-  :group 'vkbd-text-style
+  :group 'vkbd-title-bar
   :type 'sexp)
 
 (defun vkbd-title-button-menu-on-click (keyboard)
@@ -2846,7 +2852,7 @@ When nil, the title bar is not displayed."
         '(("  _  " "Toggle Native On-Screen Keyboard"
            vkbd-toggle-native-osk))))
   "Extra buttons on title bar."
-  :group 'vkbd-text-style
+  :group 'vkbd-title-bar
   :type '(repeat
           :tag "Extra Buttons"
           (list :tag "Button"
@@ -2908,7 +2914,7 @@ When nil, the title bar is not displayed."
 (defcustom vkbd-text-title-button-separator-width 0.25
   "Width of spacing between buttons (horizontal spacing between buttons)."
   :type 'float
-  :group 'vkbd-text-style)
+  :group 'vkbd-title-bar)
 
 (defconst vkbd-text-title-button-separator-display 'space) ;; or "|"
 
