@@ -4037,8 +4037,8 @@ When ENABLED is non-nil, re-enable the native on-screen keyboard."
 
 (defun vkbd-native-osk-enabled-p ()
   "Return non-nil if native on-screen keyboard is not disabled."
-  (not (vkbd-advice-added-p 'frame-toggle-on-screen-keyboard
-                            'vkbd-frame-toggle-osk-do-nothing)))
+  (not (advice-member-p 'vkbd-frame-toggle-osk-do-nothing
+                        'frame-toggle-on-screen-keyboard)))
 
 (defun vkbd-toggle-native-osk ()
   "Toggle whether the native on-screen keyboard is enabled."
@@ -4080,8 +4080,9 @@ with vkbd.  When ENABLED is nil, restore the default behavior."
 
 (defun vkbd-as-osk-enabled-p ()
   "Return non-nil if the native on-screen keyboard is replaced with vkbd."
-  (not (vkbd-advice-added-p 'frame-toggle-on-screen-keyboard
-                            'vkbd-frame-toggle-osk-using-vkbd)))
+  (not (null
+        (advice-member-p 'vkbd-frame-toggle-osk-using-vkbd
+                         'frame-toggle-on-screen-keyboard))))
 
 ;;;###autoload
 (defun vkbd-toggle-as-osk ()
@@ -4559,13 +4560,6 @@ returns nil."
     (when on-up (funcall on-up event))
     (push (cons t event) unread-command-events)
     event)))
-
-;;;;; Advice
-
-(defun vkbd-advice-added-p (symbol function)
-  (let ((added nil))
-    (advice-mapc (lambda (f _p) (when (eq f function) (setq added t))) symbol)
-    added))
 
 
 (provide 'vkbd)
