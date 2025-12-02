@@ -4068,30 +4068,30 @@ on-screen keyboard."
 
 ;;;;; Replace Native On-Screen Keyboard with VKBD
 
-(defun vkbd-set-as-osk-enabled (enabled)
+(defun vkbd-set-replace-osk-enabled (enabled)
   "Enable or disable vkbd as the on-screen keyboard.
 
 When ENABLED is non-nil, replace the native on-screen keyboard
 with vkbd.  When ENABLED is nil, restore the default behavior."
   (if enabled
-      (vkbd-enable-as-osk)
-    (vkbd-disable-as-osk))
+      (vkbd-enable-replace-osk)
+    (vkbd-disable-replace-osk))
   enabled)
 
-(defun vkbd-as-osk-enabled-p ()
+(defun vkbd-replace-osk-enabled-p ()
   "Return non-nil if the native on-screen keyboard is replaced with vkbd."
   (not (null
         (advice-member-p 'vkbd-frame-toggle-osk-using-vkbd
                          'frame-toggle-on-screen-keyboard))))
 
 ;;;###autoload
-(defun vkbd-toggle-as-osk ()
+(defun vkbd-toggle-replace-osk ()
   "Toggle replacement of the native on-screen keyboard with vkbd."
   (interactive)
-  (vkbd-set-as-osk-enabled (not (vkbd-as-osk-enabled-p))))
+  (vkbd-set-replace-osk-enabled (not (vkbd-replace-osk-enabled-p))))
 
 ;;;###autoload
-(defun vkbd-enable-as-osk ()
+(defun vkbd-enable-replace-osk ()
   "Replace the native on-screen keyboard with vkbd."
   (interactive)
   (vkbd-hide-native-osk)
@@ -4101,7 +4101,7 @@ with vkbd.  When ENABLED is nil, restore the default behavior."
   t)
 
 ;;;###autoload
-(defun vkbd-disable-as-osk ()
+(defun vkbd-disable-replace-osk ()
   "Restore the native on-screen keyboard."
   (interactive)
   (advice-remove 'frame-toggle-on-screen-keyboard
@@ -4109,13 +4109,13 @@ with vkbd.  When ENABLED is nil, restore the default behavior."
   nil)
 
 ;;;###autoload
-(define-minor-mode vkbd-as-osk-mode
+(define-minor-mode vkbd-replace-osk-mode
   "Global minor mode to replace the native on-screen keyboard with vkbd."
   :global t
   :group 'vkbd
-  (if vkbd-as-osk-mode
-      (vkbd-enable-as-osk)
-    (vkbd-disable-as-osk)))
+  (if vkbd-replace-osk-mode
+      (vkbd-enable-replace-osk)
+    (vkbd-disable-replace-osk)))
 
 
 ;;;; Utilities

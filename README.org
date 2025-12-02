@@ -139,7 +139,7 @@ vkbd.el allows you to either use vkbd alongside the native on-screen keyboard or
 
 The `vkbd-toggle-native-osk' command can be used to disable the native on-screen keyboard. When running on Android, this command is added as a button on vkbd's title bar.
 
-If you want to replace the native on-screen keyboard with vkbd, you can use the global minor mode `vkbd-as-osk-mode'. Emacs has a feature that automatically displays the on-screen keyboard when an editable area is touched, and with this mode enabled, `vkbd-open-global-keyboard' is executed instead of showing the native on-screen keyboard.
+If you want to replace the native on-screen keyboard with vkbd, you can use the global minor mode `vkbd-replace-osk-mode'. Emacs has a feature that automatically displays the on-screen keyboard when an editable area is touched, and with this mode enabled, `vkbd-open-global-keyboard' is executed instead of showing the native on-screen keyboard.
 
 * Using from Emacs Lisp
 
