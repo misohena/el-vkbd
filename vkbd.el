@@ -349,25 +349,6 @@ This function is for debugging purposes."
   "Return the frame associated with KEYBOARD."
   (vkbd-keyboard-property keyboard :frame))
 
-(defun vkbd-keyboard-target-frame (keyboard)
-  (let ((keyboard-frame (vkbd-keyboard-frame keyboard)))
-    (if (frame-live-p keyboard-frame)
-        (or (frame-parent keyboard-frame)
-            (let ((ff (frame-focus keyboard-frame)))
-              (when (and ff (not (eq ff keyboard-frame)))
-                ff))
-            ;; TODO: Track switch-frame and use previous frame
-            (seq-find (lambda (f)
-                        (and (not (eq f keyboard-frame))
-                             (frame-live-p f)
-                             (null (frame-parent f))
-                             (null (frame-parameter f 'vkbd-keyboard))))
-                      (visible-frame-list))
-            keyboard-frame)
-      (let ((sf (selected-frame)))
-        (or (frame-parent sf)
-            sf)))))
-
 (defun vkbd-keyboard-key-repeat-state (keyboard)
   (vkbd-keyboard-property keyboard :key-repeat-state))
 
@@ -761,7 +742,7 @@ dynamically bind this variable.")
     ('window
      (vkbd-select-input-target--window keyboard))))
 
-(defun vkbd-keyboard-parent-frame (keyboard)
+(defun vkbd-keyboard-container-parent-frame (keyboard)
   "Return the parent frame of the container displaying KEYBOARD."
   (when (vkbd-keyboard-live-p keyboard)
     (pcase (vkbd-keyboard-container-type keyboard)
@@ -794,26 +775,17 @@ dynamically bind this variable.")
   (when (vkbd-keyboard-live-p keyboard)
     (pcase (vkbd-keyboard-container-type keyboard)
       ('child-frame
-       (eq (vkbd-keyboard-parent-frame keyboard) frame))
+       (eq (vkbd-keyboard-container-parent-frame keyboard) frame))
       ('independent-frame
        t)
       ('window
-       (eq (vkbd-keyboard-parent-frame keyboard) frame)))))
+       (eq (vkbd-keyboard-container-parent-frame keyboard) frame)))))
 
 ;;;;;; Child Frame
 
 (defun vkbd-make-keyboard-container--child-frame (keyboard)
-  (let* ((selected-frame (selected-frame))
-         (parent-frame (or (frame-parent selected-frame)
-                           selected-frame)))
-    ;; PARENT-FRAMEはKeyboardフレームであってはならない。
-    (when (frame-parameter parent-frame 'vkbd-keyboard)
-      (setq parent-frame
-            (seq-find
-             (lambda (f)
-               (and (null (frame-parameter parent-frame 'vkbd-keyboard))
-                    (null (frame-parent f))))
-             (visible-frame-list))))
+  ;; 注意: PARENT-FRAMEはKeyboardフレームであってはならない。
+  (let ((parent-frame (vkbd-last-non-keyboard-frame)))
     (vkbd-make-keyboard-container--frame keyboard parent-frame)))
 
 (defun vkbd-delete-keyboard-container--child-frame (keyboard)
@@ -855,7 +827,9 @@ dynamically bind this variable.")
     ;; (削除した後の選択フレームがFRAMEであってはならない。
     ;; 直後のmake-keyboard-container時にFRAMEの子フレームを作ってしま
     ;; う可能性があるから)
-    (vkbd-select-target-frame keyboard)
+    (when (eq (selected-frame) frame)
+      (when-let* ((prev-frame (vkbd-previous-non-keyboard-frame)))
+        (select-frame prev-frame)))
 
     (setf (vkbd-keyboard-property keyboard :frame) nil) ;; Prevent re-entry
 
@@ -878,10 +852,11 @@ dynamically bind this variable.")
    (vkbd-keyboard-frame keyboard)))
 
 (defun vkbd-select-input-target--frame (keyboard)
-  (let ((target-frame (vkbd-select-target-frame keyboard)))
-    ;; Windowsでは上(select-frame-set-input-focus)だけでカレントバッファ
-    ;; も入力対象バッファに移るが、Androidではselected-frameだけ切り替わっ
-    ;; てカレントバッファは変わらない。
+  (let ((target-frame (vkbd-focus-input-target-frame keyboard)))
+    ;; Windowsでは上(`vkbd-focus-input-target-frame'、つまり
+    ;; `select-frame-set-input-focus')だけでカレントバッファも入力対象
+    ;; バッファに移るが、Androidでは`selected-frame'だけ切り替わってカレ
+    ;; ントバッファは変わらない。
     ;;
     ;; `vkbd-select-input-target--window'でも説明しているように
     ;; カレントバッファも切り替えないとコマンドの解決がうまくいかない。
@@ -1240,8 +1215,12 @@ SIZE is a cons cell (WIDTH . HEIGHT) specifying the frame size in pixels."
     frame))
 
 (defun vkbd-keyboard-frame-keyboard (frame)
-  "Return th keyboard object associated with FRAME."
+  "Return the keyboard object associated with FRAME."
   (frame-parameter frame 'vkbd-keyboard))
+
+(defun vkbd-keyboard-frame-p (frame)
+  (not (null (vkbd-keyboard-frame-keyboard frame))))
+
 
 (defun vkbd-set-keyboard-buffer-to-window (window buffer)
   "Set BUFFER to WINDOW for displaying the keyboard."
@@ -1365,14 +1344,32 @@ visibility constraints defined by `vkbd-keyboard-frame-keep-visible-margins'."
 
 ;; Focus Control
 
-(defun vkbd-select-parent-frame ()
-  (interactive)
-  (when-let* ((parent-frame (frame-parent nil)))
-    (select-frame-set-input-focus parent-frame t)))
+(defun vkbd-last-non-keyboard-frame ()
+  (vkbd-last-selected-frame
+   (lambda (frame) (not (vkbd-keyboard-frame-p frame)))))
 
-(defun vkbd-select-target-frame (keyboard)
+(defun vkbd-previous-non-keyboard-frame ()
+  (vkbd-previous-selected-frame
+   (lambda (frame) (not (vkbd-keyboard-frame-p frame)))))
+
+(defun vkbd-focus-last-non-keyboard-frame ()
+  "Select the last selected non-keyboard frame."
   (interactive)
-  (when-let* ((target-frame (vkbd-keyboard-target-frame keyboard)))
+  (when-let* ((frame (vkbd-last-non-keyboard-frame)))
+    (select-frame-set-input-focus frame nil)))
+
+(defun vkbd-focus-previous-non-keyboard-frame ()
+  "Select the previously selected non-keyboard frame."
+  (interactive)
+  (when-let* ((frame (vkbd-previous-non-keyboard-frame)))
+    (select-frame-set-input-focus frame nil)))
+
+(defun vkbd-keyboard-input-target-frame (_keyboard)
+  (vkbd-last-non-keyboard-frame))
+
+(defun vkbd-focus-input-target-frame (keyboard)
+  (interactive)
+  (when-let* ((target-frame (vkbd-keyboard-input-target-frame keyboard)))
     (vkbd-log "Select Parent Frame: (before)selected frame=%s buffer=%s"
               (selected-frame) (current-buffer))
     (select-frame-set-input-focus target-frame t)
@@ -1387,8 +1384,8 @@ visibility constraints defined by `vkbd-keyboard-frame-keep-visible-margins'."
 (defvar-keymap vkbd-keyboard-buffer-mode-map
   "<touchscreen-begin>" #'vkbd-move-keyboard-frame-on-mouse-down
   "<down-mouse-1>" #'vkbd-move-keyboard-frame-on-mouse-down
-  "<drag-mouse-1>" #'ignore ;;#'vkbd-select-parent-frame
-  "<mouse-1>" #'ignore ;;#'vkbd-select-parent-frame
+  "<drag-mouse-1>" #'ignore
+  "<mouse-1>" #'ignore
   "S-<down-mouse-1>" #'ignore
   "S-<drag-mouse-1>" #'ignore
   "S-<mouse-1>" #'ignore
@@ -1568,7 +1565,7 @@ last move.")
         (vkbd-track-drag down-event on-move :on-up on-move
                          :allow-out-of-target-p t)
 
-        (vkbd-select-parent-frame)
+        (vkbd-focus-last-non-keyboard-frame)
         moved))))
 
 ;;;;;; Buffer Events
@@ -1774,7 +1771,8 @@ Return an empty vector ([]) to cancel the input event."
                      (boundp 'overriding-text-conversion-style)
                      (fboundp 'set-text-conversion-style))
 
-            (when-let* ((target-frame (vkbd-keyboard-target-frame keyboard))
+            (when-let* ((target-frame (vkbd-keyboard-input-target-frame
+                                       keyboard))
                         (target-window (frame-selected-window target-frame)))
               (with-current-buffer (window-buffer target-window)
                 (when text-conversion-style
@@ -2839,7 +2837,7 @@ When nil, the title bar is not displayed."
   (when (vkbd-keyboard-p keyboard)
     (unwind-protect
         (vkbd-open-keyboard-menu keyboard last-command-event)
-      (vkbd-select-target-frame keyboard))))
+      (vkbd-focus-input-target-frame keyboard))))
 
 ;; Extra Buttons
 
@@ -4233,10 +4231,7 @@ Return nil if there is no unused frame available for reuse."
   "Delete FRAME created by `vkbd-make-frame'."
   ;; Transfor focus to other
   (when (eq (selected-frame) frame)
-    (if-let* ((parent-frame (and (frame-live-p frame)
-                                 (frame-parent frame))))
-        (select-frame-set-input-focus parent-frame)
-      (other-frame 1)))
+    (vkbd-focus-previous-non-keyboard-frame))
 
   (if vkbd-recycle-frames
       (vkbd-delete-frame-for-reuse frame)
@@ -4305,6 +4300,34 @@ The deleted frame will not be reused."
   (and (frame-live-p object)
        (not (memq object vkbd-unused-frames))))
 
+
+;;;;; Frames
+
+(defun vkbd-previous-selected-frame (&optional predicate)
+  (let ((selected-frame (selected-frame))
+        (max-use-time nil)
+        (max-frame nil))
+    (get-window-with-predicate
+     (lambda (window)
+       (when (window-live-p window)
+         (let ((frame (window-frame window))
+               (use-time (window-use-time window)))
+           (when (and (not (eq frame selected-frame))
+                      (or (null max-use-time) (> use-time max-use-time))
+                      (if predicate (funcall predicate frame) t))
+             (setq max-frame frame
+                   max-use-time use-time))))
+       nil)
+     t t)
+    max-frame))
+;; EXAMPLE: (vkbd-previous-selected-frame)
+
+(defun vkbd-last-selected-frame (predicate)
+  (let ((selected-frame (selected-frame)))
+    (if (and (frame-live-p selected-frame)
+             (funcall predicate selected-frame))
+        selected-frame
+      (vkbd-previous-selected-frame predicate))))
 
 ;;;;; Echo Area
 
