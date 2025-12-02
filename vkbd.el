@@ -81,6 +81,12 @@
   :prefix "vkbd-"
   :group 'vkbd)
 
+(defgroup vkbd-development nil
+  "For development."
+  :tag "vkbd-development"
+  :prefix "vkbd-"
+  :group 'vkbd)
+
 (defun vkbd-customize ()
   (interactive)
   (customize-group 'vkbd))
@@ -95,11 +101,11 @@
 (eval-and-compile
   (defcustom vkbd-log-generate nil
     "Control log code generation at compile time."
-    :group 'vkbd :type '(choice boolean regexp)))
+    :group 'vkbd-development :type '(choice boolean regexp)))
 
 (defcustom vkbd-log-output nil
   "Control log message output at runtime."
-  :group 'vkbd :type '(choice boolean regexp))
+  :group 'vkbd-development :type '(choice boolean regexp))
 
 (defmacro vkbd-log (format-string &rest args)
   "Log a message if enabled by `vkbd-log-generate' and `vkbd-log-output'."
