@@ -30,40 +30,7 @@
 
 ;; Customization:
 
-;;   Global keyboard settings:
-;;   - `vkbd-global-keyboard-options'
-;;   - `vkbd-global-keyboard-user-data-storage'
-
-;;   Frame Settings:
-;;   - `vkbd-keyboard-frame-parameters'
-;;   - `vkbd-recycle-frames'
-;;   - `vkbd-keyboard-frame-keep-visible-margins'
-
-;;   Default layout & style:
-;;   - `vkbd-default-keyboard-layout'
-;;   - `vkbd-default-keyboard-style' (Currently only text01 style)
-
-;;   Text style settings:
-;;   - Variables:
-;;     - `vkbd-text-key-width'
-;;     - `vkbd-text-key-raise'
-;;     - `vkbd-text-column-separator-width'
-;;     - `vkbd-text-column-separator-display'
-;;     - `vkbd-text-row-separator-height'
-;;     - `vkbd-keyboard-buffer-line-spacing'
-;;   - Faces:
-;;     - `vkbd-text-keyboard'
-;;     - `vkbd-text-key-common'
-;;     - `vkbd-text-key'
-;;     - `vkbd-text-key-pressed'
-;;     - `vkbd-text-key-locked'
-;;     - `vkbd-text-key-invisible'
-;;     - `vkbd-text-column-separator'
-;;     - `vkbd-text-row-separator'
-;;     - `vkbd-text-title-bar'
-;;     - `vkbd-text-title-button'
-;;     - `vkbd-text-title-button-separator'
-;;     - `vkbd-text-title-caption'
+;;   Type M-x customize-group vkbd
 
 ;;; Code:
 
