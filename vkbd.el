@@ -3366,18 +3366,18 @@ Changing the height of this face also changes the height of title bars."
     (?q  ?w  ?e  ?r  ?t  ?y  ?u  ?i  ?o  ?p)
     (?a  ?s  ?d  ?f  ?g  ?h  ?j  ?k  ?l  ?\;)
     (?z  ?x  ?c  ?v  ?b  ?n  ?m  ?,  ?.  ?/)
-    (shf ctl met spc ins pup hom up  end bs)
-    (M-x C-x C-c C-g del pdw lft dwn rit ret))
+    (shf ctl met ins del pup hom up  end bs)
+    (M-x C-x C-c C-g spc pdw lft dwn rit ret))
   "Layout that allows entering all ASCII symbols without shift.
 The width is limited to 10 keys, making it easy to use on smartphones.")
 
 (defconst vkbd-layout-10x7
-  '((esc tab (?` ?~) (?' ?^) (?\" ?&) (?: ?*) (?\( ?\[) (?\) ?\]) (?- ?|) shf)
+  '((esc tab (?` ?~) (?' ?^) (?\" ?&) (?: ?*) (?\( ?\[) (?\) ?\]) (?- ?_) shf)
     (?1 ?2 (?3 ?!) (?4 ?#) (?5 ?$) (?6 ?%) (?7 ?{) (?8 ?}) (?9 ?\\) (?0 ?=))
     (?q ?w ?e ?r ?t ?y ?u ?i       ?o       ?p)
     (?a ?s ?d ?f ?g ?h ?j ?k       ?l       (?\; ?+))
-    (?z ?x ?c ?v ?b ?n ?m (?, ?<)  (?. ?>)  (?/ ?_))
-    (shf ctl met hom end pup ?@  up  ??  bs)
+    (?z ?x ?c ?v ?b ?n ?m (?, ?<)  (?. ?>)  (?/ ?|))
+    (shf ctl met ?@  ??  pup hom up  end  bs)
     (M-x C-x C-c C-g spc pdw lft dwn rit ret))
   "Compact version of `vkbd-layout-10x9' with 7 rows.
 Most symbols require shift to enter. Ins and Del keys are removed.")
@@ -3388,7 +3388,7 @@ Most symbols require shift to enter. Ins and Del keys are removed.")
     (?q  ?w  ?e  ?r  ?t  ?y  ?u      ?i      ?o        ?p       (?' ?&))
     (?a  ?s  ?d  ?f  ?g  ?h  ?j      ?k      ?l        ?:       (?\" ?|))
     (?z  ?x  ?c  ?v  ?b  ?n  ?m      ?,      (?. ?<)   (?\; ?>) (?/ ?\\))
-    (shf ctl met hom end ins pup ?_  up  ??  bs)
+    (shf ctl met ?_  ??  ins pup hom up  end  bs)
     (M-x C-x C-c C-g spc del pdw lft dwn rit ret))
   "Compact layout based on `vkbd-layout-10x7' with one additional column.
 Allows entering more symbols without shift while maintaining compactness.")
