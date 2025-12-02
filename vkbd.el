@@ -2794,7 +2794,7 @@ When nil, the title bar is not displayed."
      vkbd-set-keyboard-layout-special-keys-only)
     ,@(when (eq system-type 'android)
         '(("  _  " "Toggle Native On-Screen Keyboard"
-           vkbd-toggle-native-onscreen-keyboard))))
+           vkbd-toggle-native-osk))))
   "Extra buttons on title bar."
   :group 'vkbd-text-style
   :type '(repeat
@@ -2814,33 +2814,6 @@ When nil, the title bar is not displayed."
     (cl-loop for (caption help-echo command) in extras
              concat (vkbd-make-title-bar-button options
                                                 caption command help-echo))))
-
-;; Native On-Screen Keyboard Toggle Button
-
-(defvar vkbd-toggle-native-onscreen-keyboard--backup nil)
-
-(defun vkbd-toggle-native-onscreen-keyboard ()
-  (interactive)
-  (when (and (fboundp 'frame-toggle-on-screen-keyboard)
-             (boundp 'touch-screen-display-keyboard)
-             (boundp 'touch-screen-set-point-commands))
-    (if vkbd-toggle-native-onscreen-keyboard--backup
-        ;; Show
-        (progn
-          (seq-setq (touch-screen-display-keyboard
-                     touch-screen-set-point-commands)
-                    vkbd-toggle-native-onscreen-keyboard--backup)
-          (setq vkbd-toggle-native-onscreen-keyboard--backup nil)
-          (frame-toggle-on-screen-keyboard (selected-frame) nil)
-          (message "Enable on-screen keyboard"))
-      ;; Hide
-      (setq vkbd-toggle-native-onscreen-keyboard--backup
-            (list touch-screen-display-keyboard
-                  touch-screen-set-point-commands)
-            touch-screen-display-keyboard nil
-            touch-screen-set-point-commands nil)
-      (frame-toggle-on-screen-keyboard (selected-frame) t)
-      (message "Disable on-screen keyboard"))))
 
 ;; Button Common
 
@@ -3995,6 +3968,143 @@ is used."
     (pp value (current-buffer))))
 
 
+;;;; Native On-Screen Keyboard Control
+
+;;;;; Around Advices
+
+(defvar vkbd-frame-toggle-osk--call-original nil)
+
+(defun vkbd-frame-toggle-osk-do-nothing (old-fun frame hide)
+  "Around advice to disable `frame-toggle-on-screen-keyboard'.
+
+See `frame-toggle-on-screen-keyboard' for the interface details."
+  (if vkbd-frame-toggle-osk--call-original
+      (funcall old-fun frame hide)
+    nil))
+
+(defun vkbd-frame-toggle-osk-using-vkbd (old-fun frame hide)
+  "Around advice for `frame-toggle-on-screen-keyboard' to use vkbd.
+
+See `frame-toggle-on-screen-keyboard' for the interface details."
+  (if vkbd-frame-toggle-osk--call-original
+      ;; Call original function (Control native on-screen keyboard)
+      (funcall old-fun frame hide)
+    ;; Show/Hide vkbd
+    (if hide
+        (progn
+          (vkbd-close-global-keyboard)
+          ;; Hide native OSK if shown
+          (funcall old-fun frame hide))
+      ;; Show
+      ;; TODO: Consider FRAME argument
+      (vkbd-open-global-keyboard))))
+
+;;;;; Show/Hide native on-screen keyboard
+
+(defun vkbd-hide-native-osk ()
+  "Hide native on-screen keyboard."
+  (let ((vkbd-frame-toggle-osk--call-original t))
+    (frame-toggle-on-screen-keyboard (selected-frame) t)))
+
+(defun vkbd-show-native-osk ()
+  "Show native on-screen keyboard."
+  (let ((vkbd-frame-toggle-osk--call-original t))
+    (frame-toggle-on-screen-keyboard (selected-frame) nil)))
+
+;;;;; Disable native on-screen keyboard
+
+(defun vkbd-set-native-osk-enabled (enabled)
+  "Enable or disable the native on-screen keyboard.
+
+When ENABLED is nil, disable the native on-screen keyboard.
+When ENABLED is non-nil, re-enable the native on-screen keyboard."
+  (if enabled
+      (vkbd-enable-native-osk)
+    (vkbd-disable-native-osk))
+  enabled)
+
+(defun vkbd-native-osk-enabled-p ()
+  "Return non-nil if native on-screen keyboard is not disabled."
+  (not (vkbd-advice-added-p 'frame-toggle-on-screen-keyboard
+                            'vkbd-frame-toggle-osk-do-nothing)))
+
+(defun vkbd-toggle-native-osk ()
+  "Toggle whether the native on-screen keyboard is enabled."
+  (interactive)
+  (if (vkbd-set-native-osk-enabled (not (vkbd-native-osk-enabled-p)))
+      (message (vkbd-msg "Enable native on-screen keyboard"))
+    (message (vkbd-msg "Disable native on-screen keyboard"))))
+
+(defun vkbd-enable-native-osk ()
+  "Remove the effect of `vkbd-disable-native-osk' and show the native
+on-screen keyboard."
+  (interactive)
+  (advice-remove 'frame-toggle-on-screen-keyboard
+                 'vkbd-frame-toggle-osk-do-nothing)
+  (vkbd-show-native-osk)
+  t)
+
+(defun vkbd-disable-native-osk ()
+  "Disable the native on-screen keyboard and hide it."
+  (interactive)
+  (vkbd-hide-native-osk)
+  (advice-add 'frame-toggle-on-screen-keyboard
+              :around
+              'vkbd-frame-toggle-osk-do-nothing
+              '((depth . 90)))
+  nil)
+
+;;;;; Replace Native On-Screen Keyboard with VKBD
+
+(defun vkbd-set-as-osk-enabled (enabled)
+  "Enable or disable vkbd as the on-screen keyboard.
+
+When ENABLED is non-nil, replace the native on-screen keyboard
+with vkbd.  When ENABLED is nil, restore the default behavior."
+  (if enabled
+      (vkbd-enable-as-osk)
+    (vkbd-disable-as-osk))
+  enabled)
+
+(defun vkbd-as-osk-enabled-p ()
+  "Return non-nil if the native on-screen keyboard is replaced with vkbd."
+  (not (vkbd-advice-added-p 'frame-toggle-on-screen-keyboard
+                            'vkbd-frame-toggle-osk-using-vkbd)))
+
+;;;###autoload
+(defun vkbd-toggle-as-osk ()
+  "Toggle replacement of the native on-screen keyboard with vkbd."
+  (interactive)
+  (vkbd-set-as-osk-enabled (not (vkbd-as-osk-enabled-p))))
+
+;;;###autoload
+(defun vkbd-enable-as-osk ()
+  "Replace the native on-screen keyboard with vkbd."
+  (interactive)
+  (vkbd-hide-native-osk)
+  (advice-add 'frame-toggle-on-screen-keyboard
+              :around
+              'vkbd-frame-toggle-osk-using-vkbd)
+  t)
+
+;;;###autoload
+(defun vkbd-disable-as-osk ()
+  "Restore the native on-screen keyboard."
+  (interactive)
+  (advice-remove 'frame-toggle-on-screen-keyboard
+                 'vkbd-frame-toggle-osk-using-vkbd)
+  nil)
+
+;;;###autoload
+(define-minor-mode vkbd-as-osk-mode
+  "Global minor mode to replace the native on-screen keyboard with vkbd."
+  :global t
+  :group 'vkbd
+  (if vkbd-as-osk-mode
+      (vkbd-enable-as-osk)
+    (vkbd-disable-as-osk)))
+
+
 ;;;; Utilities
 
 ;;;;; Frame Management
@@ -4437,6 +4547,14 @@ returns nil."
     (when on-up (funcall on-up event))
     (push (cons t event) unread-command-events)
     event)))
+
+;;;;; Advice
+
+(defun vkbd-advice-added-p (symbol function)
+  (let ((added nil))
+    (advice-mapc (lambda (f _p) (when (eq f function) (setq added t))) symbol)
+    added))
+
 
 (provide 'vkbd)
 ;;; vkbd.el ends here

@@ -129,6 +129,18 @@ parameter in `vkbd-keyboard-frame-parameters'.
 To change only the key height while keeping the font unchanged, adjust
 the :height of `vkbd-text-column-separator'.
 
+* Replacing the On-Screen Keyboard
+
+Starting with Emacs 30, a mechanism to control on-screen keyboards has been added to Emacs.
+
+[[https://www.gnu.org/software/emacs/manual/html_node/elisp/On_002dScreen-Keyboards.html][On-Screen Keyboards (GNU Emacs Lisp Reference Manual)]]
+
+vkbd.el allows you to either use vkbd alongside the native on-screen keyboard or use vkbd exclusively.
+
+The `vkbd-toggle-native-osk' command can be used to disable the native on-screen keyboard. When running on Android, this command is added as a button on vkbd's title bar.
+
+If you want to replace the native on-screen keyboard with vkbd, you can use the global minor mode `vkbd-as-osk-mode'. Emacs has a feature that automatically displays the on-screen keyboard when an editable area is touched, and with this mode enabled, `vkbd-open-global-keyboard' is executed instead of showing the native on-screen keyboard.
+
 * Using from Emacs Lisp
 
 You can create multiple keyboards with arbitrary settings from Emacs Lisp using code like this:

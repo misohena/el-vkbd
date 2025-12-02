@@ -3,6 +3,21 @@
 #+AUTHOR: AKIYAMA Kouhei
 
 * Inbox
+** TODO 複数のフレームで使用したときの問題を調査して解決する
+Androidの場合、フレームは画面丸丸別のものに切り替わる。同時に二つのフレームを見ることはできない。なので、別のフレームにある仮想キーボードは操作できない。
+トグルするボタンを押したときに即座に作り直す必要があるのではないか。
+
+** TODO vkbd-frame-toggle-osk-using-vkbdを複数のフレームに対応させる
+[[elisp-function:frame-toggle-on-screen-keyboard]]のFRAME引数を使用していないので形式上は問題。
+ただ、現在のlispディレクトリの中に(selected-frame)以外を引き渡しているところは無い(一箇所のnilを除く)。
+本来であれば、vkbd-global-keyboardが別のフレームの子フレームやウインドウだったら作り直す必要がある。
+
+| container-type    | 作り直す必要は無い                           |
+|-------------------+----------------------------------------------|
+| independent-frame | 気にしない                                   |
+| child-frame       | 親フレームと異なるなら作り直す               |
+| window            | ウィンドウがあるフレームと異なるなら作り直す |
+
 ** TODO スクリーンショットを更新する
 ** TODO ドキュメントのカスタマイズ変数一覧を更新する
 ** TODO 使用できないシチュエーションについて調べる :INPUT:
@@ -92,9 +107,6 @@ Virtual Keyboardへのswitch-frameやその逆をinput-decode-mapで妨害でき
 フォーカス移動が他の悟られないなどのメリットはあるだろうか。
 
 ** TODO SVGキーボードスタイルを追加する
-** TODO Emacsのオンスクリーンキーボードとして使えるようにする
-frame-toggle-on-screen-keyboardをオーバーライドしてしまえば、ネイティブのオンスクリーンキーボードの代わりにvkbdを表示するようなことも可能なはず。
-
 ** TODO 押したらサイズが大きくなるというのはどうだろう
 で、正確なキーの位置へ移動してから離すと入力される。
 領域の小ささを多少カバーできるのではないか。
@@ -1012,6 +1024,32 @@ CLOSED: [2025-12-01 Mon 22:50]
 CLOSED: [2025-12-01 Mon 22:48]
 タイトルバーに付ける。押すとオンスクリーンキーボードが無効化されて消えたり、元の設定に戻って表示されたりする。
 
+[2025-12-02 Tue]追記:
+
+その後色々と問題が分かった。
+
+[[elisp-function:frame-toggle-on-screen-keyboard]](frame.el)は色々なところから呼び出されている:
+
+- touch-screen.el
+- [[elisp-function:help--help-screen]] (help-macro.el)
+- [[elisp-function:read-multiple-choice--short-answers]] (rmc.el)
+- [[elisp-function:isearch-mode]] (isearch.el)
+- [[elisp-function:minibuffer-setup-on-screen-keyboard]] (minibuffer.el)
+- [[elisp-function:minibuffer-exit-on-screen-keyboard]] (minibuffer.el)
+- [[elisp-function:read-char-choice-with-read-key]] (subr.el)
+- [[elisp-function:touch-screen-handle-point-up]] (touch-screen.el) ※3箇所
+- [[elisp-function:modifier-bar-button]] (tool-bar.el)
+
+これらを全て個別にブロックするのは手間がかかるし変化にも弱い。
+
+となると、[[elisp-function:frame-toggle-on-screen-keyboard]](frame.el)自体を無効化する方が良い。
+
+ちなみに[[elisp-function:frame-toggle-on-screen-keyboard]]の中身はandroidの時にandroid-toggle-on-screen-keyboardを呼び出すだけ。android以外では何もしないでnilを返す。
+
+なのでadviceで関数を置き換える。ただし、従来の動作、つまり本来のオンスクリーンキーボードも明示的に制御したいので、around adviceにして、元の関数を呼び出すかどうかの変数を用意しておく。
+
+[[*Emacsのオンスクリーンキーボードとして使えるようにする][Emacsのオンスクリーンキーボードとして使えるようにする]]も一緒に対処した。
+
 ** DONE メニューに「カスタマイズ」を追加する
 CLOSED: [2025-12-01 Mon 23:17]
 (customize-group 'vkbd)を起動する。
@@ -1021,3 +1059,12 @@ CLOSED: [2025-12-01 Mon 23:45]
 効果が解けてサイズが変化しやすくなってしまう。
 fit-window-to-buffer呼び出し時は必ずwindow-preserve-sizeもしなければならない。
 
+** DONE Emacsのオンスクリーンキーボードとして使えるようにする
+CLOSED: [2025-12-02 Tue 13:36]
+[[elisp-function:frame-toggle-on-screen-keyboard]](frame.el)をオーバーライドしてしまえば、ネイティブのオンスクリーンキーボードの代わりにvkbdを表示するようなことも可能なはず。
+
+つまり、hide引数がnilのときはvkbd-open-global-keyboardを呼び出し、tなら-open-global-keyboardを呼び出せば良い。
+
+frame引数がselected-frameではないことはあるのだろうか。grepした限り少なくとも現在のlispディレクトリの中にはない(一つだけnilを指定している所がある)。もしそれに備えるならvkbd-open-global-keyboardにもparent-frame引数を入れた方が良い。その上でselected-frameを使っているところをそのparent-frameにしなければならない。
+
+[[*ネイティブのオンスクリーンキーボードをトグルするボタンを付ける][ネイティブのオンスクリーンキーボードをトグルするボタンを付ける]]と一緒に対処した。
