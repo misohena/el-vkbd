@@ -850,10 +850,10 @@ dynamically bind this variable.")
   '((no-delete-other-windows . t)
     (no-other-window . t)))
 
+(defconst vkbd-keyboard-container--window-slot-number -98423)
+
 (defun vkbd-make-keyboard-container--window (keyboard)
-  (let ((window (display-buffer-in-side-window
-                 (vkbd-keyboard-buffer keyboard)
-                 (vkbd-keyboard-container--window-display-alist keyboard))))
+  (let ((window (vkbd-make-keyboard-container--make-window keyboard)))
     (when window
       (setf (vkbd-keyboard-property keyboard :window) window)
 
@@ -918,8 +918,14 @@ dynamically bind this variable.")
 
 ;; Side Window Side
 
+(defun vkbd-make-keyboard-container--make-window (keyboard)
+  (display-buffer-in-side-window
+   (vkbd-keyboard-buffer keyboard)
+   (vkbd-keyboard-container--window-display-alist keyboard)))
+
 (defun vkbd-keyboard-container--window-display-alist (keyboard)
-  (list (cons 'side (vkbd-keyboard-window-side keyboard))))
+  (list (cons 'side (vkbd-keyboard-window-side keyboard))
+        (cons 'slot vkbd-keyboard-container--window-slot-number)))
 
 (defconst vkbd-side-window-side-list '(top left right bottom))
 
