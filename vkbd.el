@@ -281,7 +281,7 @@ Return a object that holds all information about the keyboard."
   (vkbd-log "Life Cycle: vkbd-delete-keyboard reason=%s kbd-buffer=%s frame=%s"
             reason
             (vkbd-keyboard-buffer keyboard)
-            (vkbd-keyboard-frame keyboard))
+            (vkbd-keyboard-container-frame keyboard))
   (unless (vkbd-keyboard-property keyboard :deleted)
     ;; Stop the timer if it exists
     (vkbd-stop-key-repeat keyboard t)
@@ -333,7 +333,7 @@ This function is for debugging purposes."
 (defun vkbd-keyboard-live-p (keyboard)
   "Return non-nil if KEYBOARD is a keyboard which has not been deleted."
   ;; (and (buffer-live-p (vkbd-keyboard-buffer keyboard))
-  ;;      (vkbd-frame-live-p (vkbd-keyboard-frame keyboard)))
+  ;;      (vkbd-frame-live-p (vkbd-keyboard-container-frame keyboard)))
   (and (vkbd-keyboard-p keyboard)
        (not (vkbd-keyboard-property keyboard :deleted))))
 
@@ -344,17 +344,6 @@ This function is for debugging purposes."
 (defun vkbd-keyboard-buffer (keyboard)
   "Return the buffer associated with KEYBOARD."
   (vkbd-keyboard-property keyboard :buffer))
-
-(defun vkbd-keyboard-frame (keyboard)
-  "Return the frame associated with KEYBOARD.
-
-If there is a dedicated frame to contain the keyboard buffer, it returns
-it. If not, it returns nil.
-
-This does not return the frame in which the keyboard is displayed. To
-get the frame in which the keyboard is displayed, use
-`vkbd-keyboard-displayed-frame'."
-  (vkbd-keyboard-property keyboard :frame))
 
 (defun vkbd-keyboard-key-repeat-state (keyboard)
   (vkbd-keyboard-property keyboard :key-repeat-state))
@@ -779,13 +768,13 @@ dynamically bind this variable.")
   (when (vkbd-keyboard-live-p keyboard)
     (pcase (vkbd-keyboard-container-type keyboard)
       ('child-frame
-       (let ((frame (vkbd-keyboard-frame keyboard)))
+       (let ((frame (vkbd-keyboard-container-frame keyboard)))
          (when (frame-live-p frame)
            (frame-parent frame))))
       ('independent-frame
        nil)
       ('window
-       (let ((window (vkbd-keyboard-property keyboard :window)))
+       (let ((window (vkbd-keyboard-container-window keyboard)))
          (when (window-live-p window)
            (window-frame window)))))))
 
@@ -794,11 +783,11 @@ dynamically bind this variable.")
   (when (vkbd-keyboard-live-p keyboard)
     (pcase (vkbd-keyboard-container-type keyboard)
       ('child-frame
-       (vkbd-keyboard-frame keyboard))
+       (vkbd-keyboard-container-frame keyboard))
       ('independent-frame
-       (vkbd-keyboard-frame keyboard))
+       (vkbd-keyboard-container-frame keyboard))
       ('window
-       (let ((window (vkbd-keyboard-property keyboard :window)))
+       (let ((window (vkbd-keyboard-container-window keyboard)))
          (when (window-live-p window)
            (window-frame window)))))))
 
@@ -821,6 +810,10 @@ dynamically bind this variable.")
     (no-other-window . t)))
 
 (defconst vkbd-keyboard-container--window-slot-number -98423)
+
+(defun vkbd-keyboard-container-window (keyboard)
+  "Return the window associated with KEYBOARD if container-type is `window'."
+  (vkbd-keyboard-property keyboard :window))
 
 (defun vkbd-make-keyboard-container--window (keyboard)
   (let ((window (vkbd-make-keyboard-container--make-window keyboard)))
@@ -873,7 +866,7 @@ dynamically bind this variable.")
    ;; バッファで実行される。
    (let ((window (selected-window)))
      (when (and (window-live-p window)
-                (not (eq window (vkbd-keyboard-property keyboard :window))))
+                (not (eq window (vkbd-keyboard-container-window keyboard))))
        (let ((buffer (window-buffer window)))
          (when (and (buffer-live-p buffer)
                     (not (eq buffer (vkbd-keyboard-buffer keyboard))))
@@ -989,15 +982,15 @@ that no longer have a valid window displaying them."
         (if (or
              ;; そもそもウィンドウが関連付けられていない
              ;; (おそらくcontainer-type切り替え中)
-             (and (null (vkbd-keyboard-frame keyboard))
-                  (null (vkbd-keyboard-property keyboard :window)))
+             (and (null (vkbd-keyboard-container-frame keyboard))
+                  (null (vkbd-keyboard-container-window keyboard)))
              ;; どこかのウィンドウに表示されている。
              (get-buffer-window buffer t)
              ;; container-type=windowの場合、ウィンドウが生きていれば
              ;; 一応OKとする。
              ;; which-key-modeのサイドバーが被ると一時的に消えてしまう。
              ;; その時に削除されると困るので。
-             (window-live-p (vkbd-keyboard-property keyboard :window)))
+             (window-live-p (vkbd-keyboard-container-window keyboard)))
             (cl-incf num-valid-keyboards)
           (vkbd-delete-keyboard--internal keyboard 'invalid-window))))
     num-valid-keyboards))
@@ -1023,6 +1016,17 @@ that no longer have a valid window displaying them."
 
 ;;;;;; Frame Common
 
+(defun vkbd-keyboard-container-frame (keyboard)
+  "Return the frame associated with KEYBOARD.
+
+If there is a dedicated frame to contain the keyboard buffer, it returns
+it. If not, it returns nil.
+
+This does not return the frame in which the keyboard is displayed. To
+get the frame in which the keyboard is displayed, use
+`vkbd-keyboard-displayed-frame'."
+  (vkbd-keyboard-property keyboard :frame))
+
 (defun vkbd-make-keyboard-container--frame (keyboard parent-frame)
   (let ((frame (vkbd-make-keyboard-frame keyboard parent-frame)))
     ;; Connect the KEYBOARD buffer and frame.
@@ -1044,7 +1048,7 @@ that no longer have a valid window displaying them."
     frame))
 
 (defun vkbd-delete-keyboard-container--frame (keyboard)
-  (when-let* ((frame (vkbd-keyboard-frame keyboard)))
+  (when-let* ((frame (vkbd-keyboard-container-frame keyboard)))
     ;; Deselect FRAME and remove input focus from it.
     ;; (削除した後の選択フレームがFRAMEであってはならない。
     ;; 直後のmake-keyboard-container時にFRAMEの子フレームを作ってしま
@@ -1071,7 +1075,7 @@ that no longer have a valid window displaying them."
 (defun vkbd-fit-keyboard-container-to-buffer-contents--frame (keyboard)
   (vkbd-fit-keyboard-frame-size-to-buffer-contents
    (vkbd-keyboard-options keyboard)
-   (vkbd-keyboard-frame keyboard)))
+   (vkbd-keyboard-container-frame keyboard)))
 
 (defun vkbd-select-input-target--frame (keyboard)
   (let ((target-frame (vkbd-focus-input-target-frame keyboard)))
@@ -1268,7 +1272,7 @@ include frames containing windows when the container type is window."
 
 (defun vkbd-initialize-keyboard-frame-position (keyboard)
   "Initialize the position of the KEYBOARD."
-  (let ((frame (vkbd-keyboard-frame keyboard)))
+  (let ((frame (vkbd-keyboard-container-frame keyboard)))
     (vkbd-set-keyboard-frame-position
      frame
      (or (vkbd-cast-cons-numbers
