@@ -757,9 +757,11 @@ dynamically bind this variable.")
       ('independent-frame
        (vkbd-keyboard-container-frame keyboard))
       ('window
-       (let ((window (vkbd-keyboard-container-window keyboard)))
-         (when (window-live-p window)
-           (window-frame window)))))))
+       (or
+        (let ((window (vkbd-keyboard-container-window keyboard)))
+          (when (window-live-p window)
+            (window-frame window)))
+        (get-buffer-window (vkbd-keyboard-buffer keyboard)))))))
 
 (defun vkbd-keyboard-can-input-to-frame-p (keyboard frame)
   "Return non-nil if KEYBOARD can input to FRAME."
