@@ -2404,6 +2404,7 @@ Return the resulting modified key."
     (del :text "Del" :seq (delete))
     (hom :text "Home" :seq (home))
     (end :text "End" :seq (end))
+    (pau :text "Pause" :seq (pause))
     (app :text "App" :seq (apps))
     (men :text "Menu" :seq (menu))
     (f1  :text "F1" :seq (f1))
@@ -2632,6 +2633,12 @@ same modifier twice in subsequent processing."
   (let ((key-props (vkbd-key-spec-properties key-spec)))
     (or (plist-get key-props :width)
         (plist-get key-props :w))))
+
+(defun vkbd-key-spec-additional-width (key-spec options)
+  (let* ((key-props (when key-spec (vkbd-key-spec-properties key-spec)))
+         (w-sep (plist-get key-props :w-sep)))
+    (* (or (vkbd-text-column-separator-width options) 0)
+       (or w-sep 0))))
 
 
 ;;;;; Key Objects
@@ -2963,31 +2970,28 @@ object using `vkbd-guess-current-keyboard' function."
 
 (defconst vkbd-text-title-button-separator-display 'space) ;; or "|"
 
+(defun vkbd-text-title-button-separator-width (options)
+  (or (plist-get options :text-title-button-separator-width)
+      vkbd-text-title-button-separator-width))
+
 (defun vkbd-make-text-title-button-separator (options)
   (vkbd-make-text-separator options
-                            :text-title-button-separator-width
-                            vkbd-text-title-button-separator-width
+                            (vkbd-text-title-button-separator-width options)
                             vkbd-text-title-button-separator-display
                             'vkbd-text-title-button-separator))
 
-(defun vkbd-insert-text-separator (options
-                                   width-key default-width display-spec
-                                   face)
-  (insert (vkbd-make-text-separator options
-                                    width-key default-width display-spec face)))
+(defun vkbd-make-text-separator (options width display-spec face)
+  (when (and (numberp width) (> width 0))
+    (vkbd-text-key-propertized
+     " "
+     'display
+     (if (stringp display-spec)
+         display-spec
+       `(space :width ,width))
+     'face (vkbd-get-face-opt options face))))
 
-(defun vkbd-make-text-separator (options
-                                 width-key default-width display-spec
-                                 face)
-  (let ((width (or (plist-get options width-key) default-width)))
-    (when (and (numberp width) (> width 0))
-      (vkbd-text-key-propertized
-       " "
-       'display
-       (if (stringp display-spec)
-           display-spec
-         `(space :width ,width))
-       'face (vkbd-get-face-opt options face)))))
+(defun vkbd-insert-text-separator (options width display-spec face)
+  (insert (vkbd-make-text-separator options width  display-spec face)))
 
 ;;;;;;; Insert Keys
 
@@ -3023,7 +3027,9 @@ object using `vkbd-guess-current-keyboard' function."
      (vkbd-text-key-centering
       ""
       (vkbd-text-key-width options (vkbd-key-spec-width-ratio
-                                    (vkbd-key-object-key-spec keyobj))))
+                                    (vkbd-key-object-key-spec keyobj)))
+      (vkbd-key-spec-additional-width (vkbd-key-object-key-spec keyobj)
+                                      options))
      'face (vkbd-get-face-opt options 'vkbd-text-key-invisible)
      'pointer 'arrow)))
 
@@ -3052,7 +3058,8 @@ object using `vkbd-guess-current-keyboard' function."
          key-types
          key-width options)
         key-width)
-       key-width))))
+       key-width
+       (vkbd-key-spec-additional-width key-spec options)))))
 
 (defcustom vkbd-text-key-width 5
   "Width of one key (number of characters)."
@@ -3111,17 +3118,98 @@ lower it."
          nil)))))
 ;; TEST: (vkbd-text-key-concat-key-type-strings '("," "<") 5) => ", <"
 
-(defun vkbd-text-key-centering (text key-width)
-  ;; TODO: Use display property (space :width 0.x)
+(defcustom vkbd-text-key-centering-method nil
+  "Text centering method.
+
+See:
+- `vkbd-text-key-centering'
+- `vkbd-text-key-centering--use-display-space'
+- `vkbd-text-key-centering--use-char-space'"
+  :group 'vkbd-text-style
+  :type '(choice (const :tag "Default" nil)
+                 (const :tag "Use display properties" display)
+                 (const :tag "Use text characters" char)))
+
+(defun vkbd-text-key-centering (text key-width additional-width)
+  "Convert TEXT to a string with KEY-WIDTH (in characters), centering TEXT
+as much as possible.
+
+ADDITIONAL-WIDTH is the additional space width to add to the final
+string width, specified as a floating-point multiplier relative to the
+frame character width.  This is mainly used to add multiples of
+separator width to the key width."
+  (if (eq vkbd-text-key-centering-method 'char)
+      (vkbd-text-key-centering--use-char-space
+       text key-width additional-width)
+    (vkbd-text-key-centering--use-display-space
+     text key-width additional-width)))
+
+(defun vkbd-text-key-centering--use-display-space (text
+                                                   key-width additional-width)
+  "Version of `vkbd-text-key-centering' that uses only display properties
+for centering.
+
+Advantages:
+  - Accurately centered.
+
+Disadvantages:
+  - Layout breaks when using text-scale-adjust.
+  - May have slight misalignment due to subtle errors in other cases.
+
+  - Not compatible with the old method (rounding :w specified-value ×
+    `vkbd-text-key-width' to integer)."
   (let ((text-width (string-width text)))
-    (when (< text-width key-width)
-      (let* ((short-width (- key-width text-width))
-             (left-width (/ short-width 2))
-             (right-width (- short-width left-width)))
-        (setq text (concat (make-string left-width ?\s)
-                           text
-                           (make-string right-width ?\s)))))
-    (truncate-string-to-width text key-width)))
+    (when (> text-width key-width)
+      (setq text-width key-width)
+      (setq text (truncate-string-to-width text key-width)))
+
+    (let* ((rest-w (+ (- key-width text-width) additional-width)))
+      (unless (zerop rest-w)
+        (let* ((half-w (* 0.5 rest-w))
+               ;; Need to separate objects.
+               ;; When text is "", consecutive identical objects are
+               ;; treated as a single display.
+               ;; From an error perspective, it's better not to combine them.
+               (l-space-obj (propertize " " 'display
+                                        (list 'space :width half-w)))
+               (r-space-obj (propertize " " 'display
+                                        (list 'space :width half-w))))
+          (setq text (concat l-space-obj text r-space-obj))))))
+  text)
+
+(defun vkbd-text-key-centering--use-char-space (text key-width additional-width)
+  "Version of `vkbd-text-key-centering' that uses space characters for
+centering.
+
+Fills the insufficient part of TEXT-WIDTH relative to KEY-WIDTH with
+space characters.
+
+Disadvantages:
+  - Biased when there's an odd number of characters in the shortfall.
+
+Advantages:
+  - Layouts based on the old method work without breaking.
+  - Layout doesn't break even when using text-scale-adjust.
+  - Keys are more likely to align vertically and horizontally (no
+    pixel-level adjustment).
+  - More advantageous for running in text terminals."
+  (let ((key-text
+         (let ((text-width (string-width text)))
+           (when (< text-width key-width)
+             (let* ((short-width (- key-width text-width))
+                    (left-width (/ short-width 2))
+                    (right-width (- short-width left-width)))
+               (setq text (concat (make-string left-width ?\s)
+                                  text
+                                  (make-string right-width ?\s)))))
+           (truncate-string-to-width text key-width))))
+
+    (unless (zerop additional-width)
+      (let* ((half-w (* 0.5 additional-width))
+             (space (propertize " " 'display `(space :width ,half-w))))
+        (setq key-text (concat space key-text space))))
+
+    key-text))
 
 (defun vkbd-text-key-obj-face (keyobj)
   (let ((options (vkbd-keyboard-options (vkbd-key-object-keyboard keyobj))))
@@ -3143,10 +3231,13 @@ lower it."
 
 (defconst vkbd-text-column-separator-display 'space) ;; or "|"
 
+(defun vkbd-text-column-separator-width (options)
+  (or (plist-get options :text-column-separator-width)
+      vkbd-text-column-separator-width))
+
 (defun vkbd-insert-text-column-separator (options)
   (vkbd-insert-text-separator options
-                              :text-column-separator-width
-                              vkbd-text-column-separator-width
+                              (vkbd-text-column-separator-width options)
                               vkbd-text-column-separator-display
                               'vkbd-text-column-separator))
 
@@ -3471,26 +3562,32 @@ Allows entering more symbols without shift while maintaining compactness.")
 
 (defconst vkbd-layout-jp
   '(vkbd-layout-jp
-    (esc (:w 0.5) f1 f2 f3 f4 f5 f6 f7 f8 f9 f10 f11 f12)
+    (esc f1 f2 f3 f4 f5 f6 f7 f8 f9 f10 f11 f12 nil pau)
     (nil (\1 !) (\2 \") (\3 \#) (\4 $) (\5 %) (\6 &)
          (\7 \') (\8 \() (\9 \)) \0 (- =) (^ ~) (\\ |) bs)
-    ((tab :w 1.5) q  w  e  r  t  y  u  i  o  p  (@ \`) (\[ {) (ret :w 1.4))
-    ((ctl :w 2.0) a  s  d  f  g  h  j  k  l  (\; \+) (: *) (\] }) ctl)
-    ((shf :w 2.5) z  x  c  v  b  n  m  (\, <) (\. >) (/ \?) (\\ _) (shf :w 1.5))
-    (alt sup hyp met nil (spc :w 3) nil ins hom pup nil up)
-    (M-x C-x C-c C-g nil (nil :w 3) nil del end pdw lft dwn rit))
+    ((tab :w 1.6 :w-sep 1)
+     q  w  e  r  t  y  u  i  o  p  (@ \`) (\[ {) (ret :w 1.4))
+    ((ctl :w 2.0 :w-sep 1)
+     a  s  d  f  g  h  j  k  l  (\; \+) (: *) (\] }) ctl)
+    ((shf :w 2.4 :w-sep 2)
+     z  x  c  v  b  n  m  (\, <) (\. >) (/ \?) (\\ _) (shf :w 1.6))
+    (alt sup hyp met nil (spc :w 3) nil ins hom pup (:w 0 :w-sep 2) nil up)
+    (M-x C-x C-c C-g nil (nil :w 3) nil del end pdw (:w 0 :w-sep 2) lft dwn rit))
   "Japanese keyboard-like layout.")
 
 (defconst vkbd-layout-us
   '(vkbd-layout-us
-    (esc (:w 0.5) f1 f2 f3 f4 f5 f6 f7 f8 f9 f10 f11 f12)
+    (esc f1 f2 f3 f4 f5 f6 f7 f8 f9 f10 f11 f12 (:w 0.4) pau)
     ((~ \`) (\1 !) (\2 @) (\3 \#) (\4 $) (\5 %) (\6 ^)
-     (\7 &) (\8 *) (\9 \() (\0 \)) (- _) (= +) (bs :w 1.4))
-    ((tab :w 1.4) q  w  e  r  t  y  u  i  o  p  (\[ \{) (\] \}) (\\ |))
-    ((ctl :w 1.6) a  s  d  f  g  h  j  k  l  (\; :) (\' \") (ret :w 1.8))
-    ((shf :w 2.2) z  x  c  v  b  n  m  (\, <) (\. >) (/ \?) (shf :w 2.2))
-    (alt sup hyp met (:w 0.5) (spc :w 3) (:w 0.5) ins hom pup (:w 0.5) nil up)
-    (M-x C-x C-c C-g (:w 0.5) (nil :w 3) (:w 0.5) del end pdw (:w 0.5) lft dwn rit))
+     (\7 &) (\8 *) (\9 \() (\0 \)) (- _) (= +) (bs :w 1.4 :w-sep 1))
+    ((tab :w 1.4 :w-sep 1)
+     q  w  e  r  t  y  u  i  o  p  (\[ \{) (\] \}) (\\ |))
+    ((ctl :w 1.6 :w-sep 2)
+     a  s  d  f  g  h  j  k  l  (\; :) (\' \") (ret :w 1.8))
+    ((shf :w 2.2 :w-sep 3)
+     z  x  c  v  b  n  m  (\, <) (\. >) (/ \?) (shf :w 2.2))
+    (alt sup hyp met (spc :w 4.4) ins hom pup (:w 0 :w-sep 4) nil up)
+    (M-x C-x C-c C-g (nil :w 4.4) del end pdw (:w 0 :w-sep 4) lft dwn rit))
   "US keyboard-like layout.")
 
 (defconst vkbd-layout-special-keys-only
