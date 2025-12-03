@@ -3138,11 +3138,16 @@ ADDITIONAL-WIDTH is the additional space width to add to the final
 string width, specified as a floating-point multiplier relative to the
 frame character width.  This is mainly used to add multiples of
 separator width to the key width."
-  (if (eq vkbd-text-key-centering-method 'char)
-      (vkbd-text-key-centering--use-char-space
-       text key-width additional-width)
-    (vkbd-text-key-centering--use-display-space
-     text key-width additional-width)))
+  (pcase vkbd-text-key-centering-method
+    ('char
+     (vkbd-text-key-centering--use-char-space text key-width
+                                              additional-width))
+    ('display
+     (vkbd-text-key-centering--use-display-space text key-width
+                                                 additional-width))
+    (_ ;; Default
+     (vkbd-text-key-centering--use-char-space text key-width
+                                              additional-width))))
 
 (defun vkbd-text-key-centering--use-display-space (text
                                                    key-width additional-width)
