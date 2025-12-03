@@ -2874,20 +2874,28 @@ When nil, the title bar is not displayed."
 (defcustom vkbd-title-button-extras
   ;; TODO: Use keymap?
   `(("  O  " "Layout 10x7"
-     vkbd-set-keyboard-layout-10x7)
+     (:layout vkbd-layout-10x7))
     ("  o  " "Layout special-keys-only"
-     vkbd-set-keyboard-layout-special-keys-only)
+     (:layout vkbd-layout-special-keys-only))
     ,@(when (eq system-type 'android)
         '(("  _  " "Toggle Native On-Screen Keyboard"
            vkbd-toggle-native-osk))))
-  "Extra buttons on title bar."
+  "Extra buttons on title bar.
+
+Inside an S-expression or function, you can get the current keyboard
+object using `vkbd-guess-current-keyboard' function."
   :group 'vkbd-title-bar
   :type '(repeat
           :tag "Extra Buttons"
           (list :tag "Button"
                 (string :tag "Caption")
                 (string :tag "Help echo")
-                (function :tag "Command"))))
+                (choice
+                 (list :tag "Select layout"
+                       (const :format "" :layout) (symbol :tag "Layout ID"))
+                 (list :tag "Evaluate S-exp"
+                       (const :format "" :eval) (sexp))
+                 (function :tag "Command")))))
 
 (defconst vkbd-title-button-extras-format
   '(:eval (vkbd-make-title-button-extras
@@ -2932,8 +2940,16 @@ When nil, the title bar is not displayed."
     (when (and (windowp window) (integerp point))
       (with-current-buffer (window-buffer window)
         (let ((command (get-text-property point 'vkbd-button-command)))
-          (when (commandp command)
-            (call-interactively command)))))))
+          (cond
+           ((eq (car-safe command) :eval)
+            (eval (cadr command)))
+           ((eq (car-safe command) :layout)
+            (let ((layout-id (cadr command)))
+              (when (symbolp layout-id)
+                (vkbd-set-keyboard-layout (vkbd-guess-current-keyboard)
+                                          layout-id))))
+           ((commandp command)
+            (call-interactively command))))))))
 
 ;; Separator
 

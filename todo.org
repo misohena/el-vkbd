@@ -1141,3 +1141,17 @@ options :prevent-auto-deletion
 
 frameの時で自動削除しない理由はないと思う。
 
+** DONE 大きいレイアウトと小さいレイアウトをカスタマイズ
+CLOSED: [2025-12-03 Wed 13:11]
+vkbd-title-button-extrasに追加したのはあくまで例のつもりだったんだけど、小さいレイアウトと大きいレイアウトを明示的に変更できるようにすべきだろうか。
+
+最初は「1」とか「2」とかいうボタンを追加しようと思っていた。レイアウトボタンを好きなように設定して欲しかったから。
+
+今でもvkbd-title-button-extrasにコマンドとして
+
+: (lambda () (interactive) (vkbd-set-keyboard-layout (vkbd-guess-current-keyboard) 'user-layout-01))
+
+を指定すれば機能する。……うーん、ちょっと酷いような気もしてきたな(笑)
+
+ボタンのコマンドの所に(:eval <S式>)や(:layout <layout-id>)を指定出来るようにした。ここまでやれば十分だろう。
+
