@@ -962,7 +962,14 @@ that no longer have a valid window displaying them."
              ;; 一応OKとする。
              ;; which-key-modeのサイドバーが被ると一時的に消えてしまう。
              ;; その時に削除されると困るので。
-             (window-live-p (vkbd-keyboard-container-window keyboard)))
+             (window-live-p (vkbd-keyboard-container-window keyboard))
+             ;; オプションで削除が制限されている
+             (let ((options (vkbd-keyboard-options keyboard)))
+               (pcase (plist-get options :prevent-auto-deletion)
+                 ('nil nil)
+                 ('t t)
+                 ('window
+                  (eq (vkbd-keyboard-container-type keyboard) 'window)))))
             (cl-incf num-valid-keyboards)
           (vkbd-delete-keyboard--internal keyboard 'invalid-window))))
     num-valid-keyboards))

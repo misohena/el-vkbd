@@ -4,10 +4,8 @@
 
 * Inbox
 ** TODO スクリーンショットを更新する
-** TODO window-toggle-side-windows(C-x w s)で削除されてしまう
-ウィンドウが削除されたらキーボードも削除するようにしたので当然。
-残すオプションも追加する？
-ついでに普通のウィンドウにもできるようにしても良い。
+** TODO vkbd-global-keyboard-optionsの:typeを真面目に書く
+これは全てのoptionsを調べてまとめることを意味する。
 
 ** TODO 使用できないシチュエーションについて調べる :INPUT:
 => read系関数については「[[*Emacsのイベント読み取り関数の構造を詳しく調べる][Emacsのイベント読み取り関数の構造を詳しく調べる]]」で調べた。
@@ -104,6 +102,10 @@ Virtual Keyboardへのswitch-frameやその逆をinput-decode-mapで妨害でき
 ** TODO キーボードバッファでスクロール出来てしまうのを抑制する
 ** TODO vkbd-tool-bar-modeを作る?
 * Someday
+** TODO 通常のウィンドウで表示できるようにする
+正直必要ないと思う。
+やるならcontainer-typeにnormal-windowを追加するか、side-window-sideとしてno-sideみたいなのを追加するか、もしくは独立したオプションにするか。
+
 ** TODO フレーム使用時でもキーリピートする :INPUT:
 フォーカスが当たっていないフレーム上でmouse upイベントが発生しないのでどうしようもないと思う(touchscreen-endがどうなのかは未検証)。
 
@@ -1120,4 +1122,22 @@ vkbd-layout-listをカスタマイズ可能にする。そうすれば使わな�
 ** DONE レイアウト定義内の1文字のシンボルを文字として扱う
 CLOSED: [2025-12-03 Wed 10:21]
 vkbd-layout-listのカスタマイズ時に文字コードよりも分かりやすいので。
+
+** DONE window-toggle-side-windows(C-x w s)で削除されてしまう
+CLOSED: [2025-12-03 Wed 12:30]
+ウィンドウが削除されたらキーボードも削除するようにしたので当然。
+残すオプションも追加する？
+
+ウィンドウで表示しているとキー操作でvkbdを閉じる方法が無いので、C-x w sで消えるのは案外悪いことではない気もする。
+
+一応追加しておく。
+
+options :prevent-auto-deletion
+- nil : 自動削除する
+- t : 自動削除しない
+- window : container-typeがwindowのときだけ自動削除する
+
+: (setq vkbd-global-keyboard-options '(:prevent-auto-deletion window))
+
+frameの時で自動削除しない理由はないと思う。
 
