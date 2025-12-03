@@ -592,12 +592,8 @@ dynamically bind this variable.")
 (defun vkbd-keyboard-layout (keyboard)
   (vkbd-keyboard-property keyboard :layout))
 
-(defun vkbd-current-keyboard-layout-name (keyboard)
-  (let ((current-layout (vkbd-keyboard-layout keyboard)))
-    (seq-find (lambda (layout)
-                ;; TODO: Use `equal'? (current-layout may be copied)
-                (eq (vkbd-resolve-keyboard-layout-spec layout) current-layout))
-              (vkbd-layout-list))))
+(defun vkbd-current-keyboard-layout-id (keyboard)
+  (vkbd-layout-id (vkbd-keyboard-layout keyboard)))
 
 (defun vkbd-set-keyboard-layout (keyboard new-layout-spec)
   (interactive
@@ -633,15 +629,16 @@ dynamically bind this variable.")
   (lambda () (interactive) (vkbd-set-keyboard-layout keyboard new-layout)))
 
 (defun vkbd-make-keyboard-layout-menu (keyboard)
-  (let ((current-layout (vkbd-current-keyboard-layout-name keyboard))
+  (let ((current-layout-id (vkbd-current-keyboard-layout-id keyboard))
         (menu (make-sparse-keymap (vkbd-msg "Select a layout"))))
     (dolist (layout (vkbd-layout-list))
-      (when (symbolp layout)
-        (define-key-after
-          menu (vector layout)
-          (list 'menu-item (symbol-name layout)
-                (vkbd-make-keyboard-layout-selector keyboard layout)
-                :button `(:radio . ,(eq layout current-layout))))))
+      (let ((layout-id (vkbd-layout-id layout)))
+        (when (symbolp layout-id)
+          (define-key-after
+            menu (vector layout-id)
+            (list 'menu-item (symbol-name layout-id)
+                  (vkbd-make-keyboard-layout-selector keyboard layout)
+                  :button `(:radio . ,(eq layout-id current-layout-id)))))))
     (list menu)))
 
 ;;;;;; Style
@@ -3351,15 +3348,43 @@ Changing the height of this face also changes the height of title bars."
 ;;;;; Keyboard Layouts
 
 ;; <keyboard-layout> :
-;;   ( <keyboard-row> ... [ <keyboard-plist> ])
+;;   ( <layout-id> <keyboard-row> ... [ <layout-plist> ])
 ;;
 ;; <keyboard-row> :
 ;;   ( <key-spec> ... )
 ;;
 ;; <keyboard-plist> : Currently undefined
 
+(defun vkbd-layout-id (layout)
+  (cond
+   ((symbolp layout)
+    layout)
+   ((and (consp layout) (symbolp (car layout)))
+    (car layout))))
+;; TEST: (vkbd-layout-id vkbd-layout-10x7) => vkbd-layout-10x7
+;; TEST: (vkbd-layout-id 'vkbd-layout-10x7) => vkbd-layout-10x7
+;; TEST: (vkbd-layout-id '(id (?a) (?b) :p1 1)) => id
+;; TEST: (vkbd-layout-id '((?a) (?b) :p1 1)) => nil
+
+(defun vkbd-layout-rows (layout)
+  (when (consp layout)
+    (if (and (symbolp (car layout)) (listp (cdr layout)))
+        (cdr layout)
+      layout)))
+;; TEST: (vkbd-layout-rows '(id (?a) (?b) :p1 1)) => ((97) (98) :p1 1)
+;; TEST: (vkbd-layout-rows '((?a) (?b) :p1 1)) => ((97) (98) :p1 1)
+
+(defun vkbd-layout-properties (layout)
+  (when (consp layout)
+    (let ((p layout))
+      (while (and p (not (keywordp (car p))))
+        (setq p (cdr p)))
+      p)))
+;; TEST: (vkbd-layout-properties '(id (?a) (?b) :p1 1)) => (:p1 1)
+
 (defconst vkbd-layout-10x9
-  '((esc ?~  ?^  ?`  ?_  ?|  ?\\ ?{  ?}  ?*)
+  '(vkbd-layout-10x9
+    (esc ?~  ?^  ?`  ?_  ?|  ?\\ ?{  ?}  ?*)
     (tab ?:  ?<  ?=  ?>  ??  ?@  ?\[ ?\] ?+)
     (?!  ?\" ?#  ?$  ?%  ?&  ?'  ?\( ?\) ?-)
     (?1  ?2  ?3  ?4  ?5  ?6  ?7  ?8  ?9  ?0)
@@ -3372,7 +3397,8 @@ Changing the height of this face also changes the height of title bars."
 The width is limited to 10 keys, making it easy to use on smartphones.")
 
 (defconst vkbd-layout-10x7
-  '((esc tab (?` ?~) (?' ?^) (?\" ?&) (?: ?*) (?\( ?\[) (?\) ?\]) (?- ?_) shf)
+  '(vkbd-layout-10x7
+    (esc tab (?` ?~) (?' ?^) (?\" ?&) (?: ?*) (?\( ?\[) (?\) ?\]) (?- ?_) shf)
     (?1 ?2 (?3 ?!) (?4 ?#) (?5 ?$) (?6 ?%) (?7 ?{) (?8 ?}) (?9 ?\\) (?0 ?=))
     (?q ?w ?e ?r ?t ?y ?u ?i       ?o       ?p)
     (?a ?s ?d ?f ?g ?h ?j ?k       ?l       (?\; ?+))
@@ -3383,7 +3409,8 @@ The width is limited to 10 keys, making it easy to use on smartphones.")
 Most symbols require shift to enter. Ins and Del keys are removed.")
 
 (defconst vkbd-layout-11x7
-  '((esc tab ?^  ?@  ?*  ?+  ?-      ?=      (?\( ?\[) (?\) ?\]) shf)
+  '(vkbd-layout-11x7
+    (esc tab ?^  ?@  ?*  ?+  ?-      ?=      (?\( ?\[) (?\) ?\]) shf)
     (?1  ?2  ?3  ?4  (?5 ?!) (?6 ?#) (?7 ?$) (?8 ?%)   (?9 ?{)  (?0 ?}) (?` ?~))
     (?q  ?w  ?e  ?r  ?t  ?y  ?u      ?i      ?o        ?p       (?' ?&))
     (?a  ?s  ?d  ?f  ?g  ?h  ?j      ?k      ?l        ?:       (?\" ?|))
@@ -3394,7 +3421,8 @@ Most symbols require shift to enter. Ins and Del keys are removed.")
 Allows entering more symbols without shift while maintaining compactness.")
 
 (defconst vkbd-layout-jp
-  '((esc (:w 0.5) f1 f2 f3 f4 f5 f6 f7 f8 f9 f10 f11 f12)
+  '(vkbd-layout-jp
+    (esc (:w 0.5) f1 f2 f3 f4 f5 f6 f7 f8 f9 f10 f11 f12)
     (nil (?1 ?!) (?2 ?\") (?3 ?#) (?4 ?$) (?5 ?%) (?6 ?&)
          (?7 ?') (?8 ?\() (?9 ?\)) ?0 (?- ?=) (?^ ?~) (?\\ ?|) bs)
     ((tab :w 1.5)
@@ -3408,7 +3436,8 @@ Allows entering more symbols without shift while maintaining compactness.")
   "Japanese keyboard-like layout.")
 
 (defconst vkbd-layout-us
-  '((esc (:w 0.5) f1 f2 f3 f4 f5 f6 f7 f8 f9 f10 f11 f12)
+  '(vkbd-layout-us
+    (esc (:w 0.5) f1 f2 f3 f4 f5 f6 f7 f8 f9 f10 f11 f12)
     ((?~ ?`) (?1 ?!) (?2 ?@) (?3 ?#) (?4 ?$) (?5 ?%) (?6 ?^)
          (?7 ?&) (?8 ?*) (?9 ?\() (?0 ?\)) (?- ?_) (?= ?+) (bs :w 1.4))
     ((tab :w 1.4)
@@ -3422,7 +3451,8 @@ Allows entering more symbols without shift while maintaining compactness.")
   "US keyboard-like layout.")
 
 (defconst vkbd-layout-special-keys-only
-  '((esc C-x C-c M-x C-g ins hom up  end pup)
+  '(vkbd-layout-special-keys-only
+    (esc C-x C-c M-x C-g ins hom up  end pup)
     (tab shf ctl met men del lft dwn rit pdw))
   "Layout containing only special keys, intended for use with existing
 keyboards.
@@ -3430,13 +3460,45 @@ keyboards.
 Note: The modifier lock feature does not work correctly when used with
 existing keyboards.")
 
-(defconst vkbd-layout-list
+(defconst vkbd-preset-layout-list
   '(vkbd-layout-10x7
     vkbd-layout-10x9
     vkbd-layout-11x7
     vkbd-layout-us
     vkbd-layout-jp
     vkbd-layout-special-keys-only))
+
+(defcustom vkbd-layout-list
+  (append vkbd-preset-layout-list
+          (list (cons 'user-layout-01
+                      (vkbd-layout-rows (copy-tree vkbd-layout-10x7)))))
+  "A list of layouts.
+
+A list of layouts.
+
+Each element in the list is either a <keyboard-layout> or a variable
+name symbol with <keyboard-layout> as its value.
+
+The format of <keyboard-layout> is:
+
+ <keyboard-layout> :
+   ( <layout-id> <keyboard-row> ... [ <layout-plist> ])
+
+ <keyboard-row> :
+   ( <key-spec> ... )
+
+ <keyboard-plist> : Currently undefined"
+  :group 'vkbd
+  :type `(repeat :tag "Layouts"
+                 (choice :tag "Layout"
+                         ,@(cl-loop for id in vkbd-preset-layout-list
+                                    collect `(const ,id))
+                         (variable :tag "Variable name")
+                         (cons :tag "Raw layout data"
+                               (symbol :tag "Layout ID")
+                               (sexp :tag "Rows and properties"
+                                     ,(copy-tree
+                                       (vkbd-layout-rows vkbd-layout-11x7)))))))
 
 (defun vkbd-layout-list ()
   vkbd-layout-list)
@@ -3446,7 +3508,7 @@ existing keyboards.")
     (interactive (list (vkbd-guess-current-keyboard)))
     (vkbd-set-keyboard-layout keyboard layout-name)))
 
-(dolist (layout vkbd-layout-list)
+(dolist (layout vkbd-preset-layout-list)
   (when (symbolp layout)
     (let ((name (symbol-name layout)))
       (when (string-match "\\`vkbd-layout-\\(.*\\)\\'" name)
@@ -3458,26 +3520,43 @@ existing keyboards.")
 (defcustom vkbd-default-keyboard-layout 'vkbd-layout-10x7
   "Default keyboard layout to use.
 
-This can be either a symbol naming a variable that holds a layout list,
-or a layout list itself."
-  :type `(choice ,@(mapcar (lambda (name) `(const ,name))
-                           vkbd-layout-list)
-                 (symbol :tag "Variable name")
-                 sexp)
+The following can be specified:
+- Layout ID (a key in `vkbd-layout-list')
+- Name of a variable whose value is a `<keyboard-layout>`
+- A <keyboard-layout> directly
+
+See `vkbd-layout-list' variable."
+  :type `(choice ,@(cl-loop for layout in vkbd-layout-list
+                            collect `(const ,(vkbd-layout-id layout)))
+                 (variable :tag "Variable name")
+                 (symbol :tag "Layout ID")
+                 (sexp :tag "<keyboard-layout>"))
   :group 'vkbd)
 
 (defun vkbd-concrete-keyboard-layout-p (layout)
-  (and (consp layout) (listp (car layout))))
+  (and (consp layout) (or (listp (car layout))
+                          (and (symbolp (car layout)) (listp (cdr layout))))))
+;; TEST: (vkbd-concrete-keyboard-layout-p vkbd-layout-10x7) => t
+;; TEST: (vkbd-concrete-keyboard-layout-p 'vkbd-layout-10x7) => nil
 
 (defun vkbd-resolve-keyboard-layout-spec (layout)
   "Convert a layout specification LAYOUT to a layout list.
 
-LAYOUT can be a symbol (variable name) or a list."
+The following can be specified for LAYOUT:
+- Layout ID for `vkbd-layout-list'
+- Variable name with <keyboard-layout>
+- <keyboard-layout>
+
+See `vkbd-layout-list' variable."
   (or
-   ;; Variable name
    (when (and (symbolp layout) (not (null layout)))
-     (default-value layout))
-   ;; List of list
+     (or
+      ;; Layout ID (`vkbd-layout-list')
+      (assq layout vkbd-layout-list)
+      ;; Variable name
+      (when (boundp layout)
+        (default-value layout))))
+   ;; Layout object
    (when (vkbd-concrete-keyboard-layout-p layout)
      layout)))
 
@@ -3492,19 +3571,22 @@ OPTIONS is a property list that may contain a `:layout' property."
 (defun vkbd-map-keyboard-layout-keys (layout
                                       key-fun between-cols-fun between-rows-fun)
   (when (vkbd-concrete-keyboard-layout-p layout)
-    (let ((rows layout))
-      (while rows
-        (unless (eq rows layout)
+    (let* ((all-rows (vkbd-layout-rows layout))
+           (rest-rows all-rows))
+      (while (and rest-rows
+                  ;; Ensure not keyword ((...) (...) (...) :prop val)
+                  (listp (car rest-rows)))
+        (unless (eq rest-rows all-rows)
           (funcall between-rows-fun))
-        (let* ((curr-row (car rows))
-               (cols (car rows)))
+        (let* ((curr-row (car rest-rows))
+               (cols (car rest-rows)))
           (while cols
             (unless (eq cols curr-row)
               (funcall between-cols-fun))
             (let ((key-spec (car cols)))
               (funcall key-fun key-spec))
             (setq cols (cdr cols))))
-        (setq rows (cdr rows))))))
+        (setq rest-rows (cdr rest-rows))))))
 
 
 ;;;;; Keyboard Styles

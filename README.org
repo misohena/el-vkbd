@@ -98,7 +98,8 @@ Frame settings:
 Buffer settings:
 - `vkbd-keyboard-buffer-local-variables' : Buffer local constant variables
 
-Default layout & style:
+Layout & style:
+- `vkbd-layout-list' : All layout list
 - `vkbd-default-keyboard-layout' : Default layout
 - `vkbd-default-keyboard-style' (currently only text01 style is available)
 
