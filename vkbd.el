@@ -2362,8 +2362,9 @@ Return the resulting modified key."
 
 ;; <key-type> :
 ;;   nil          : no key
-;;   <symbol>     : key symbol of `vkbd-key-type-alist'
 ;;   <integer>    : character code point
+;;   <symbol>     : key symbol of `vkbd-key-type-alist'
+;;                  or a single character symbol
 
 (defconst vkbd-key-type-alist
   '((esc :text "Esc" :seq (escape))
@@ -2426,9 +2427,17 @@ Return nil if KEY-TYPE is nil or not found in the alist."
    ((integerp key-type)
     (list key-type))
    ((symbolp key-type)
-    (plist-get (alist-get key-type vkbd-key-type-alist) :seq))))
+    (or
+     (plist-get (alist-get key-type vkbd-key-type-alist) :seq)
+     (let ((str (symbol-name key-type)))
+       (when (= (length str) 1)
+         (list (aref str 0))))))))
 ;; TEST: (vkbd-key-type-to-key-sequence ?a) => (97)
 ;; TEST: (vkbd-key-type-to-key-sequence 'C-c) => (control 99)
+;; TEST: (vkbd-key-type-to-key-sequence 'spc) => (32)
+;; TEST: (vkbd-key-type-to-key-sequence 'esc) => (escape)
+;; TEST: (vkbd-key-type-to-key-sequence 'a) => (97)
+;; TEST: (vkbd-key-type-to-key-sequence '$) => (36)
 
 (defun vkbd-fold-key-sequence-modifiers (key-sequence-list initial-modifiers)
   "Fold modifier keys in KEY-SEQUENCE-LIST into modified key events.
@@ -2476,8 +2485,12 @@ For example:
    ((integerp key-type)
     (char-to-string key-type))
    ((symbolp key-type)
-    ;; TODO: Select a string that matches KEY-WIDTH ("Ctl" "Ctrl" "Control")
-    (plist-get (alist-get key-type vkbd-key-type-alist) :text))))
+    (or
+     ;; TODO: Select a string that matches KEY-WIDTH ("Ctl" "Ctrl" "Control")
+     (plist-get (alist-get key-type vkbd-key-type-alist) :text)
+     (let ((str (symbol-name key-type)))
+       (when (= (length str) 1)
+         str))))))
 
 
 ;;;;; Key Specs
@@ -2506,8 +2519,9 @@ Return nil or a list in the form ([<no-mod-key-type> [<shifted-key-type>]])."
    ((consp key-spec)
     (cl-loop
      with rtypes = nil ;;reversed
-     ;; Take until keyword.
-     for x in key-spec until (keywordp x) do (push x rtypes)
+     ;; Take until a keyword (excluding a single `:').
+     for x in key-spec until (and (keywordp x) (not (eq x '\:)))
+     do (push x rtypes)
      ;; Discard the trailing nil.
      ;; (nil) => nil
      ;; (<non-nil> nil) => (<non-nil>)
@@ -2526,6 +2540,9 @@ Return nil or a list in the form ([<no-mod-key-type> [<shifted-key-type>]])."
 ;; TEST: (vkbd-key-spec-key-types '(nil)) => nil
 ;; TEST: (vkbd-key-spec-key-types '(?a nil)) => (97)
 ;; TEST: (vkbd-key-spec-key-types '(?a nil :w 1.5)) => (97)
+;; TEST: (vkbd-key-spec-key-types '\:) => (:)
+;; TEST: (vkbd-key-spec-key-types '(\:)) => (:)
+;; TEST: (vkbd-key-spec-key-types '(\: :w5 1.5)) => (:)
 
 (defun vkbd-key-spec-base-key-type (key-spec)
   "Return base (unmodified) key type of KEY-SPEC."
@@ -2534,12 +2551,18 @@ Return nil or a list in the form ([<no-mod-key-type> [<shifted-key-type>]])."
 (defun vkbd-key-spec-properties (key-spec)
   "Return the property list contained in KEY-SPEC."
   (when (consp key-spec)
-    (cl-loop for x on key-spec when (keywordp (car x)) return x)))
+    (cl-loop for x on key-spec
+             ;; Drop until a keyword (excluding a single `:').
+             when (and (keywordp (car x)) (not (eq (car x) '\:)))
+             return x)))
 ;; TEST: (vkbd-key-spec-properties nil) => nil
 ;; TEST: (vkbd-key-spec-properties ?a) => nil
 ;; TEST: (vkbd-key-spec-properties '(?a)) => nil
 ;; TEST: (vkbd-key-spec-properties '(:w 1.5)) => (:w 1.5)
 ;; TEST: (vkbd-key-spec-properties '(esc :w 1.5)) => (:w 1.5)
+;; TEST: (vkbd-key-spec-properties '\:) => nil
+;; TEST: (vkbd-key-spec-properties '(\:)) => nil
+;; TEST: (vkbd-key-spec-properties '(\: :w5 1.5)) => (:w5 1.5)
 
 (defun vkbd-key-spec-modified-key-types-and-consumed-modifiers
     (key-spec pressed-modifiers)
@@ -3353,7 +3376,8 @@ Changing the height of this face also changes the height of title bars."
 ;; <keyboard-row> :
 ;;   ( <key-spec> ... )
 ;;
-;; <keyboard-plist> : Currently undefined
+;; <layout-plist> : ( <layout-property>... )
+;; <layout-property> : Currently undefined
 
 (defun vkbd-layout-id (layout)
   (cond
@@ -3384,13 +3408,13 @@ Changing the height of this face also changes the height of title bars."
 
 (defconst vkbd-layout-10x9
   '(vkbd-layout-10x9
-    (esc ?~  ?^  ?`  ?_  ?|  ?\\ ?{  ?}  ?*)
-    (tab ?:  ?<  ?=  ?>  ??  ?@  ?\[ ?\] ?+)
-    (?!  ?\" ?#  ?$  ?%  ?&  ?'  ?\( ?\) ?-)
-    (?1  ?2  ?3  ?4  ?5  ?6  ?7  ?8  ?9  ?0)
-    (?q  ?w  ?e  ?r  ?t  ?y  ?u  ?i  ?o  ?p)
-    (?a  ?s  ?d  ?f  ?g  ?h  ?j  ?k  ?l  ?\;)
-    (?z  ?x  ?c  ?v  ?b  ?n  ?m  ?,  ?.  ?/)
+    (esc ~   ^   \`  _   |   \\  {   }   *)
+    (tab :   <   =   >   \?  @   \[  \]  +)
+    (!   \"  \#  $   %   &   \'  \(  \)  -)
+    (\1  \2  \3  \4  \5  \6  \7  \8  \9  \0)
+    (q   w   e   r   t   y   u   i   o   p)
+    (a   s   d   f   g   h   j   k   l   \;)
+    (z   x   c   v   b   n   m   \,  \.  /)
     (shf ctl met ins del pup hom up  end bs)
     (M-x C-x C-c C-g spc pdw lft dwn rit ret))
   "Layout that allows entering all ASCII symbols without shift.
@@ -3398,24 +3422,24 @@ The width is limited to 10 keys, making it easy to use on smartphones.")
 
 (defconst vkbd-layout-10x7
   '(vkbd-layout-10x7
-    (esc tab (?` ?~) (?' ?^) (?\" ?&) (?: ?*) (?\( ?\[) (?\) ?\]) (?- ?_) shf)
-    (?1 ?2 (?3 ?!) (?4 ?#) (?5 ?$) (?6 ?%) (?7 ?{) (?8 ?}) (?9 ?\\) (?0 ?=))
-    (?q ?w ?e ?r ?t ?y ?u ?i       ?o       ?p)
-    (?a ?s ?d ?f ?g ?h ?j ?k       ?l       (?\; ?+))
-    (?z ?x ?c ?v ?b ?n ?m (?, ?<)  (?. ?>)  (?/ ?|))
-    (shf ctl met ?@  ??  pup hom up  end  bs)
+    (esc tab (\` ~) (\' ^)  (\" &) (: *)  (\( \[) (\) \]) (- _) shf)
+    (\1  \2  (\3 !) (\4 \#) (\5 $) (\6 %) (\7 {)  (\8 })  (\9 \\) (\0 =))
+    (q   w   e   r   t   y   u   i   o   p)
+    (a   s   d   f   g   h   j   k   l   (\; +))
+    (z   x   c   v   b   n   m (\, <) (\. >) (/ |))
+    (shf ctl met @   \?  pup hom up  end bs)
     (M-x C-x C-c C-g spc pdw lft dwn rit ret))
   "Compact version of `vkbd-layout-10x9' with 7 rows.
 Most symbols require shift to enter. Ins and Del keys are removed.")
 
 (defconst vkbd-layout-11x7
   '(vkbd-layout-11x7
-    (esc tab ?^  ?@  ?*  ?+  ?-      ?=      (?\( ?\[) (?\) ?\]) shf)
-    (?1  ?2  ?3  ?4  (?5 ?!) (?6 ?#) (?7 ?$) (?8 ?%)   (?9 ?{)  (?0 ?}) (?` ?~))
-    (?q  ?w  ?e  ?r  ?t  ?y  ?u      ?i      ?o        ?p       (?' ?&))
-    (?a  ?s  ?d  ?f  ?g  ?h  ?j      ?k      ?l        ?:       (?\" ?|))
-    (?z  ?x  ?c  ?v  ?b  ?n  ?m      ?,      (?. ?<)   (?\; ?>) (?/ ?\\))
-    (shf ctl met ?_  ??  ins pup hom up  end  bs)
+    (esc tab ^   @   *      +       -      =      (\( \[) (\) \]) shf)
+    (\1  \2  \3  \4  (\5 !) (\6 \#) (\7 $) (\8 %) (\9 {)  (\0 }) (\` ~))
+    (q   w   e   r   t      y       u      i      o       p      (\' &))
+    (a   s   d   f   g      h       j      k      l       :      (\" |))
+    (z   x   c   v   b      n       m      \,     (\. <)  (\; >) (/ \\))
+    (shf ctl met _   \?  ins pup hom up  end  bs)
     (M-x C-x C-c C-g spc del pdw lft dwn rit ret))
   "Compact layout based on `vkbd-layout-10x7' with one additional column.
 Allows entering more symbols without shift while maintaining compactness.")
@@ -3423,14 +3447,11 @@ Allows entering more symbols without shift while maintaining compactness.")
 (defconst vkbd-layout-jp
   '(vkbd-layout-jp
     (esc (:w 0.5) f1 f2 f3 f4 f5 f6 f7 f8 f9 f10 f11 f12)
-    (nil (?1 ?!) (?2 ?\") (?3 ?#) (?4 ?$) (?5 ?%) (?6 ?&)
-         (?7 ?') (?8 ?\() (?9 ?\)) ?0 (?- ?=) (?^ ?~) (?\\ ?|) bs)
-    ((tab :w 1.5)
-     ?q  ?w  ?e  ?r  ?t  ?y  ?u  ?i  ?o  ?p  (?@ ?`) (?\[ ?{) (ret :w 1.4))
-    ((ctl :w 2.0)
-     ?a  ?s  ?d  ?f  ?g  ?h  ?j  ?k  ?l  (?\; ?+) (?: ?*) (?\] ?}) ctl)
-    ((shf :w 2.5)
-     ?z  ?x  ?c  ?v  ?b  ?n  ?m  (?, ?<) (?. ?>) (?/ ??) (?\\ ?_) (shf :w 1.5))
+    (nil (\1 !) (\2 \") (\3 \#) (\4 $) (\5 %) (\6 &)
+         (\7 \') (\8 \() (\9 \)) \0 (- =) (^ ~) (\\ |) bs)
+    ((tab :w 1.5) q  w  e  r  t  y  u  i  o  p  (@ \`) (\[ {) (ret :w 1.4))
+    ((ctl :w 2.0) a  s  d  f  g  h  j  k  l  (\; \+) (: *) (\] }) ctl)
+    ((shf :w 2.5) z  x  c  v  b  n  m  (\, <) (\. >) (/ \?) (\\ _) (shf :w 1.5))
     (alt sup hyp met nil (spc :w 3) nil ins hom pup nil up)
     (M-x C-x C-c C-g nil (nil :w 3) nil del end pdw lft dwn rit))
   "Japanese keyboard-like layout.")
@@ -3438,14 +3459,11 @@ Allows entering more symbols without shift while maintaining compactness.")
 (defconst vkbd-layout-us
   '(vkbd-layout-us
     (esc (:w 0.5) f1 f2 f3 f4 f5 f6 f7 f8 f9 f10 f11 f12)
-    ((?~ ?`) (?1 ?!) (?2 ?@) (?3 ?#) (?4 ?$) (?5 ?%) (?6 ?^)
-         (?7 ?&) (?8 ?*) (?9 ?\() (?0 ?\)) (?- ?_) (?= ?+) (bs :w 1.4))
-    ((tab :w 1.4)
-     ?q  ?w  ?e  ?r  ?t  ?y  ?u  ?i  ?o  ?p  (?\[ ?\{) (?\] ?\}) (?\\ ?|))
-    ((ctl :w 1.6)
-     ?a  ?s  ?d  ?f  ?g  ?h  ?j  ?k  ?l  (?\; ?:) (?' ?\") (ret :w 1.8))
-    ((shf :w 2.2)
-     ?z  ?x  ?c  ?v  ?b  ?n  ?m  (?, ?<) (?. ?>) (?/ ??) (shf :w 2.2))
+    ((~ \`) (\1 !) (\2 @) (\3 \#) (\4 $) (\5 %) (\6 ^)
+     (\7 &) (\8 *) (\9 \() (\0 \)) (- _) (= +) (bs :w 1.4))
+    ((tab :w 1.4) q  w  e  r  t  y  u  i  o  p  (\[ \{) (\] \}) (\\ |))
+    ((ctl :w 1.6) a  s  d  f  g  h  j  k  l  (\; :) (\' \") (ret :w 1.8))
+    ((shf :w 2.2) z  x  c  v  b  n  m  (\, <) (\. >) (/ \?) (shf :w 2.2))
     (alt sup hyp met (:w 0.5) (spc :w 3) (:w 0.5) ins hom pup (:w 0.5) nil up)
     (M-x C-x C-c C-g (:w 0.5) (nil :w 3) (:w 0.5) del end pdw (:w 0.5) lft dwn rit))
   "US keyboard-like layout.")
@@ -3487,7 +3505,25 @@ The format of <keyboard-layout> is:
  <keyboard-row> :
    ( <key-spec> ... )
 
- <keyboard-plist> : Currently undefined"
+ <layout-plist> : ( <layout-property>... )
+ <layout-property> : Currently undefined
+
+
+ <key-spec> :
+   <key-type>
+   ([<base-key-type> [<shifted-key-type>]] [<key-spec-plist>])
+
+ <key-spec-plist> : ( <key-spec-property>... )
+ <key-spec-property> :
+   :w <key-width-ratio>
+   :width <key-width-ratio>
+
+
+ <key-type> :
+   nil          : no key
+   <integer>    : character code point
+   <symbol>     : key symbol of `vkbd-key-type-alist'
+                  or a single character symbol"
   :group 'vkbd
   :type `(repeat :tag "Layouts"
                  (choice :tag "Layout"

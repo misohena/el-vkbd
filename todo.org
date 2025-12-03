@@ -1117,3 +1117,7 @@ vkbd-layout-listをカスタマイズ可能にする。そうすれば使わな�
 
 それに先だってlayoutオブジェクトにlayout-idが必要。vkbd-layout-id、vkbd-layout-rows、ついでにvkbd-layout-properties関数を追加。map関数とレイアウト選択メニューもそれに対応させる。
 
+** DONE レイアウト定義内の1文字のシンボルを文字として扱う
+CLOSED: [2025-12-03 Wed 10:21]
+vkbd-layout-listのカスタマイズ時に文字コードよりも分かりやすいので。
+
