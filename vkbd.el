@@ -2421,13 +2421,23 @@ Return the resulting modified key."
 ;; To customize:
 ;;   (setf (plist-get (alist-get 'up vkbd-key-type-alist) :text) "Up")
 
+(defun vkbd-key-type-symbol-char (key-type)
+  "Return the character if KEY-TYPE is a symbol with a single-character name.
+Otherwise, return nil."
+  (when (symbolp key-type)
+    (let ((sym-name (symbol-name key-type)))
+      (when (= (length sym-name) 1)
+        (aref sym-name 0)))))
+
 (defun vkbd-key-type-to-key-sequence (key-type)
   "Convert KEY-TYPE to a key sequence list.
 
 KEY-TYPE can be:
 - nil: return nil
 - An integer (character code): return a single-element list
-- A symbol: look up in `vkbd-key-type-alist' and return its :seq property
+- A symbol: look up in `vkbd-key-type-alist' and return its :seq property.
+  If not found and the symbol name is a single character, return that
+  character code as a single-element list.
 
 Return nil if KEY-TYPE is nil or not found in the alist."
   (cond
@@ -2438,9 +2448,8 @@ Return nil if KEY-TYPE is nil or not found in the alist."
    ((symbolp key-type)
     (or
      (plist-get (alist-get key-type vkbd-key-type-alist) :seq)
-     (let ((str (symbol-name key-type)))
-       (when (= (length str) 1)
-         (list (aref str 0))))))))
+     (when-let* ((char (vkbd-key-type-symbol-char key-type)))
+       (list char))))))
 ;; TEST: (vkbd-key-type-to-key-sequence ?a) => (97)
 ;; TEST: (vkbd-key-type-to-key-sequence 'C-c) => (control 99)
 ;; TEST: (vkbd-key-type-to-key-sequence 'spc) => (32)
@@ -2497,9 +2506,8 @@ For example:
     (or
      ;; TODO: Select a string that matches KEY-WIDTH ("Ctl" "Ctrl" "Control")
      (plist-get (alist-get key-type vkbd-key-type-alist) :text)
-     (let ((str (symbol-name key-type)))
-       (when (= (length str) 1)
-         str))))))
+     (when-let* ((char (vkbd-key-type-symbol-char key-type)))
+       (char-to-string char))))))
 
 
 ;;;;; Key Specs
@@ -2531,17 +2539,22 @@ Return nil or a list in the form ([<no-mod-key-type> [<shifted-key-type>]])."
      with rtypes = nil ;;reversed
      ;; Take until a keyword (excluding a single `:').
      for x in key-spec until (and (keywordp x) (not (eq x '\:)))
-     do (push x rtypes)
+     do (push (or (vkbd-key-type-symbol-char x) x) rtypes)
      ;; Discard the trailing nil.
      ;; (nil) => nil
      ;; (<non-nil> nil) => (<non-nil>)
      ;; (nil <non-nil>) => keep
      finally return (nreverse (seq-drop-while #'null rtypes))))
-   ((or (integerp key-spec) (symbolp key-spec))
+   ((symbolp key-spec)
+    (list (or (vkbd-key-type-symbol-char key-spec) key-spec)))
+   ((integerp key-spec)
     (list key-spec))))
 ;; TEST: (vkbd-key-spec-key-types ?a) => (97)
 ;; TEST: (vkbd-key-spec-key-types '(?a)) => (97)
 ;; TEST: (vkbd-key-spec-key-types '(?a ?b)) => (97 98)
+;; TEST: (vkbd-key-spec-key-types 'a) => (97)
+;; TEST: (vkbd-key-spec-key-types '(a)) => (97)
+;; TEST: (vkbd-key-spec-key-types '(a b)) => (97 98)
 ;; TEST: (vkbd-key-spec-key-types '(:w 1.5)) => nil
 ;; TEST: (vkbd-key-spec-key-types '(nil :w 1.5)) => nil
 ;; TEST: (vkbd-key-spec-key-types '(nil ?a :w 1.5)) => (nil 97)
@@ -2550,9 +2563,9 @@ Return nil or a list in the form ([<no-mod-key-type> [<shifted-key-type>]])."
 ;; TEST: (vkbd-key-spec-key-types '(nil)) => nil
 ;; TEST: (vkbd-key-spec-key-types '(?a nil)) => (97)
 ;; TEST: (vkbd-key-spec-key-types '(?a nil :w 1.5)) => (97)
-;; TEST: (vkbd-key-spec-key-types '\:) => (:)
-;; TEST: (vkbd-key-spec-key-types '(\:)) => (:)
-;; TEST: (vkbd-key-spec-key-types '(\: :w5 1.5)) => (:)
+;; TEST: (vkbd-key-spec-key-types '\:) => (58)
+;; TEST: (vkbd-key-spec-key-types '(\:)) => (58)
+;; TEST: (vkbd-key-spec-key-types '(\: :w5 1.5)) => (58)
 
 (defun vkbd-key-spec-base-key-type (key-spec)
   "Return base (unmodified) key type of KEY-SPEC."
@@ -2568,6 +2581,8 @@ Return nil or a list in the form ([<no-mod-key-type> [<shifted-key-type>]])."
 ;; TEST: (vkbd-key-spec-properties nil) => nil
 ;; TEST: (vkbd-key-spec-properties ?a) => nil
 ;; TEST: (vkbd-key-spec-properties '(?a)) => nil
+;; TEST: (vkbd-key-spec-properties 'a) => nil
+;; TEST: (vkbd-key-spec-properties '(a)) => nil
 ;; TEST: (vkbd-key-spec-properties '(:w 1.5)) => (:w 1.5)
 ;; TEST: (vkbd-key-spec-properties '(esc :w 1.5)) => (:w 1.5)
 ;; TEST: (vkbd-key-spec-properties '\:) => nil
@@ -2615,13 +2630,17 @@ same modifier twice in subsequent processing."
       (cons key-types nil))))
 ;; TEST: (vkbd-key-spec-modified-key-types-and-consumed-modifiers nil nil) => nil
 ;; TEST: (vkbd-key-spec-modified-key-types-and-consumed-modifiers nil '(shift control)) => nil
+;; TEST: (vkbd-key-spec-modified-key-types-and-consumed-modifiers 'esc '(shift control)) => ((esc))
 ;; TEST: (vkbd-key-spec-modified-key-types-and-consumed-modifiers ?a nil) => ((97))
 ;; TEST: (vkbd-key-spec-modified-key-types-and-consumed-modifiers ?a '(shift)) => ((65) shift)
 ;; TEST: (vkbd-key-spec-modified-key-types-and-consumed-modifiers ?a '(shift control)) => ((65) shift)
-;; TEST: (vkbd-key-spec-modified-key-types-and-consumed-modifiers 'esc '(shift control)) => ((esc))
 ;; TEST: (vkbd-key-spec-modified-key-types-and-consumed-modifiers '(?a :w 2) '(shift control)) => ((65) shift)
 ;; TEST: (vkbd-key-spec-modified-key-types-and-consumed-modifiers '(?2 ?\") '(shift control)) => ((34) shift)
 ;; TEST: (vkbd-key-spec-modified-key-types-and-consumed-modifiers '(?2 ?\") '(control)) => ((50 34))
+;; TEST: (vkbd-key-spec-modified-key-types-and-consumed-modifiers 'a nil) => ((97))
+;; TEST: (vkbd-key-spec-modified-key-types-and-consumed-modifiers 'a '(shift)) => ((65) shift)
+;; TEST: (vkbd-key-spec-modified-key-types-and-consumed-modifiers 'a '(shift control)) => ((65) shift)
+;; TEST: (vkbd-key-spec-modified-key-types-and-consumed-modifiers '(a :w 2) '(shift control)) => ((65) shift)
 
 (defun vkbd-key-spec-modified-key-types-for-display (key-spec pressed-modifiers)
   (car
