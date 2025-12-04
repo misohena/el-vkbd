@@ -6,13 +6,46 @@ This Emacs Lisp library displays a virtual keyboard (also known as an on-screen 
 
 The following image is a screenshot of Emacs for Android (Native App).
 
+#+ATTR_HTML: :width 400
 [[file:./screenshot/android-screen.png]]
 
-The keyboard displayed in the middle is the virtual keyboard created by this library.
+The keyboard displayed above is the virtual keyboard created by this library.
 
 Tapping the keyboard icon in the toolbar toggles the display of this virtual keyboard.
 
 By the way, at the bottom is the flick input panel from ATOK, a Japanese IME app. While it's possible to switch to a full keyboard like Hacker's Keyboard, flick input is better for Japanese typing and switching between keyboards is cumbersome. So I created this library to display both simultaneously.
+
+** Other Screenshots
+
+Display only special keys and use alongside the existing on-screen keyboard:
+
+#+ATTR_HTML: :width 300
+[[file:./screenshot/compact-layout.png]]
+
+Disable the native on-screen keyboard and use only vkbd:
+
+#+ATTR_HTML: :width 300
+[[file:./screenshot/vkbd-only.png]]
+
+Display in a child frame (not very user-friendly):
+
+#+ATTR_HTML: :width 300
+[[file:./screenshot/child-frame.png]]
+
+Keyboard menu:
+
+#+ATTR_HTML: :width 300
+[[file:./screenshot/keyboard-menu.png]]
+
+The buttons in the title bar are, from left to right: close, menu, switch to 10x7 layout, switch to special-keys-only layout, and toggle native on-screen keyboard disable (Android only). Of course, these are customizable:
+
+#+ATTR_HTML: :width 300
+[[file:./screenshot/title-bar.png]]
+
+Of course, it can also be used in desktop environments:
+
+#+ATTR_HTML: :width 400
+[[file:./screenshot/mswindows-screen.png]]
 
 * Requirements
 
@@ -58,7 +91,7 @@ Based on vkbd-layout-10x9, reduced to 7 rows. Most symbols require shift to ente
 
 [[file:screenshot/layout-11x7.png]]
 
-Compact layout based on `vkbd-layout-10x7' with one additional column. Allows entering more symbols without shift while maintaining compactness.
+Based on `vkbd-layout-10x7' with one additional column. Allows entering more symbols without shift while maintaining compactness.
 
 ** vkbd-layout-us
 
@@ -151,7 +184,7 @@ The easiest way to adjust the overall keyboard height is to change the
 :height of the `vkbd-text-keyboard' face.You can also change the font
 parameter in `vkbd-keyboard-frame-parameters'.
 
-To change only the key height while keeping the font unchanged, adjust
+To change only the key height without changing the text size on the keys, adjust
 the :height of `vkbd-text-column-separator'.
 
 * Replacing the On-Screen Keyboard
