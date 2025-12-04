@@ -115,7 +115,7 @@ Note: The modifier lock feature does not work correctly when used with existing 
 
 * Customization
 
-M-x customize-group vkbd
+Type M-x customize-group vkbd
 
 ** Customization Variables and Faces
 
@@ -217,9 +217,23 @@ You can create multiple keyboards with arbitrary settings from Emacs Lisp using 
 (vkbd-delete-keyboard my-keyboard)
 #+end_src
 
+* Limitations
+
+There are several known situations where this library's virtual keyboard does not work properly.
+
+When using frame display mode for the virtual keyboard, input acceptance may be interrupted or input may not work correctly due to frame switching events. Such issues have been observed with transient.el (Magit, etc.) and set-transient-map (text-scale-adjust, etc.). Window display mode is less prone to malfunctions caused by focus switching.
+
+When using window display mode, the virtual keyboard may be hidden by other side windows, making input impossible. For example, which-key-mode and transient.el (Magit, etc.) display side windows at the bottom of the frame by default. If this library's virtual keyboard is also displayed in a side window at the bottom, they will try to occupy the same location, causing the keyboard to be partially or completely hidden and potentially preventing input. When using window display mode, it may be better to set the side window position to the top.
+
+There are likely other problematic cases as well. In some situations, key input may not be accepted and you may become unable to escape from that situation.
+
+On Android, quickly pressing the volume down button twice will trigger a quit. Please remember this.
+
 * License
 
 This software is licensed under GPLv3. You are free to use, modify and distribute this software.
+
+This is a small token of appreciation for Emacs, the wonderful software that I've been able to use freely. Regarding Emacs-related work, I have no intention of asserting copyright in a restrictive way. Feel free to use it however you likeÅ\or don't use it at all but reference the code, borrow ideas, or just let it inspire you in some way. I simply hope it contributes to making Emacs more useful for everyone.
 
 If you wish to register this software in any package archive, please fork this repository, make the necessary modifications to fit the package archive's requirements, and submit the registration on your own. Also continue with the necessary maintenance. You don't need my permission.
 
