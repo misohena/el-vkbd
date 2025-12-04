@@ -118,22 +118,6 @@ loading the library."
 
 ;; The global keyboard is a keyboard that is used for the entire Emacs session.
 
-(defcustom vkbd-global-keyboard-options
-  nil ;;'(:title "Global Keyboard")
-  "Options for the global keyboard.
-This is a property list passed to `vkbd-make-keyboard' when creating the
-global keyboard."
-  :group 'vkbd :type 'plist)
-
-(defun vkbd-global-keyboard-options ()
-  (let ((options vkbd-global-keyboard-options))
-    (unless (plist-member options :user-data-storage)
-      (setq options
-            (nconc (list :user-data-storage
-                         (vkbd-global-keyboard-user-data-storage))
-                   options)))
-    options))
-
 (defvar vkbd-global-keyboard nil
   "The global keyboard buffer, or nil if not created.")
 
@@ -608,10 +592,7 @@ dynamically bind this variable.")
     (with-current-buffer (vkbd-keyboard-buffer keyboard)
       (vkbd-erase-keyboard-buffer-contents keyboard)
 
-      (setf (plist-get (vkbd-keyboard-property keyboard :options) :layout)
-            new-layout-spec)
-      (setf (vkbd-keyboard-property keyboard :layout)
-            new-layout)
+      (setf (vkbd-keyboard-property keyboard :layout) new-layout)
 
       (vkbd-make-keyboard-buffer-contents keyboard))
 
@@ -628,6 +609,10 @@ dynamically bind this variable.")
 (defun vkbd-make-keyboard-layout-selector (keyboard new-layout)
   (lambda () (interactive) (vkbd-set-keyboard-layout keyboard new-layout)))
 
+(defun vkbd-keyboard-layout-user-selectable-p (keyboard)
+  (let ((options (vkbd-keyboard-options keyboard)))
+    (null (plist-get options :layout))))
+
 (defun vkbd-make-keyboard-layout-menu (keyboard)
   (let ((current-layout-id (vkbd-current-keyboard-layout-id keyboard))
         (menu (make-sparse-keymap (vkbd-msg "Select a layout"))))
@@ -639,7 +624,7 @@ dynamically bind this variable.")
             (list 'menu-item (symbol-name layout-id)
                   (vkbd-make-keyboard-layout-selector keyboard layout)
                   :button `(:radio . ,(eq layout-id current-layout-id)))))))
-    (list menu)))
+    (list menu :visible (vkbd-keyboard-layout-user-selectable-p keyboard))))
 
 ;;;;;; Style
 
@@ -671,6 +656,11 @@ dynamically bind this variable.")
 (defun vkbd-default-keyboard-container-type ()
   (car vkbd-keyboard-container-type-list))
 
+(defun vkbd-keyboard-container-type-user-selectable-p (keyboard)
+  (let ((options (vkbd-keyboard-options keyboard)))
+    (null (vkbd-cast-keyboard-container-type
+           (plist-get options :container-type)))))
+
 ;;;;;; Keyboard Container Type Menu
 
 (defun vkbd-read-keyboard-container-type-from-menu (keyboard)
@@ -690,7 +680,8 @@ dynamically bind this variable.")
           (list 'menu-item (symbol-name type)
                 (vkbd-make-keyboard-container-type-selector keyboard type)
                 :button `(:radio . ,(eq type current-type))))))
-    (list menu)))
+    (list menu
+          :visible (vkbd-keyboard-container-type-user-selectable-p keyboard))))
 
 ;;;;;; Keyboard Container Functions
 
@@ -1203,8 +1194,10 @@ SIZE is a cons cell (WIDTH . HEIGHT) specifying the frame size in pixels."
             (when position
               `((left . ,(car position))
                 (top . ,(cdr position))))
-            (or (plist-get (vkbd-keyboard-options keyboard) :frame-parameters)
-                (vkbd-keyboard-frame-parameters))))))
+            (if-let* ((cell (plist-member (vkbd-keyboard-options keyboard)
+                                          :frame-parameters)))
+                (cadr cell)
+              (vkbd-keyboard-frame-parameters))))))
     frame))
 
 (defun vkbd-keyboard-frame-keyboard (frame)
@@ -1434,13 +1427,17 @@ returns non-nil)."
   :type 'alist
   :group 'vkbd)
 
+(defconst vkbd-keyboard-buffer-line-spacing-cus-type
+  '(choice :format "%[Value Menu%] %v"
+           (const :tag "Global value" global)
+           (const :tag "No extra space" nil)
+           (integer :tag "In pixels")
+           (float :tag "Relative to the default frame line height")))
+
 (defcustom vkbd-keyboard-buffer-line-spacing nil
   "`line-spacing' value in keyboard buffers."
-  :type '(choice (const :tag "Global value" global)
-                 (const :tag "No extra space" nil)
-                 (integer :tag "In pixels")
-                 (float :tag "Relative to the default frame line height"))
-  :group 'vkbd-text-style)
+  :group 'vkbd-text-style
+  :type vkbd-keyboard-buffer-line-spacing-cus-type)
 
 (defconst vkbd-keyboard-buffer-name " *Virtual Keyboard*")
 
@@ -1465,8 +1462,10 @@ KEYBOARD is a keyboard object."
       (vkbd-make-keyboard-buffer-contents keyboard)
 
       ;; Make local variables
-      (dolist (var-val (or (plist-get options :buffer-local-variables)
-                           vkbd-keyboard-buffer-local-variables))
+      (dolist (var-val (if-let* ((cell (plist-member options
+                                                     :buffer-local-variables)))
+                           (cadr cell)
+                         vkbd-keyboard-buffer-local-variables))
         (set (make-local-variable (car var-val)) (cdr var-val)))
 
       ;; Add kill-buffer-hook
@@ -2519,6 +2518,7 @@ For example:
 ;; <key-spec-property> :
 ;;   :w <key-width-ratio>
 ;;   :width <key-width-ratio>
+;;   :w-sep <key-width-in-separator-unit>
 
 (defun vkbd-key-spec-key-types (key-spec)
   "Return the key-types contained in KEY-SPEC.
@@ -2788,6 +2788,18 @@ Return a list of events corresponding to KEYOBJ."
 
 ;; Format
 
+(defconst vkbd-title-bar-format-cus-type
+  '(repeat
+    :tag "Item List"
+    (choice
+     :tag "Item Type"
+     (const :tag "Close Button" (:eval vkbd-title-button-close-format))
+     (const :tag "Menu Button" (:eval vkbd-title-button-menu-format))
+     (const :tag "Extra Buttons" (:eval vkbd-title-button-extras-format))
+     (const :tag "Title" (:eval vkbd-title-caption-format))
+     (string :tag "Any String")
+     (sexp :tag "Sexp"))))
+
 (defcustom vkbd-title-bar-format
   '((:eval vkbd-title-button-close-format)
     (:eval vkbd-title-button-menu-format)
@@ -2797,21 +2809,15 @@ Return a list of events corresponding to KEYOBJ."
 Converted to a single string by the `format-mode-line' function.
 When nil, the title bar is not displayed."
   :group 'vkbd-title-bar
-  :type '(repeat
-          (choice
-           (const :tag "Close Button" (:eval vkbd-title-button-close-format))
-           (const :tag "Menu Button" (:eval vkbd-title-button-menu-format))
-           (const :tag "Extra Buttons" (:eval vkbd-title-button-extras-format))
-           (const :tag "Title" (:eval vkbd-title-caption-format))
-           (string :tag "Any String")
-           (sexp :tag "Sexp"))))
+  :type vkbd-title-bar-format-cus-type)
 
 (defvar vkbd-current-options nil)
 
 (defun vkbd-format-title-bar (options)
   (let* ((vkbd-current-options options)
-         (format (or (plist-get options :title-bar-format)
-                     vkbd-title-bar-format)))
+         (format (if-let* ((cell (plist-member options :title-bar-format)))
+                     (cadr cell)
+                   vkbd-title-bar-format)))
     (when format
       (format-mode-line format))))
 
@@ -2878,6 +2884,23 @@ When nil, the title bar is not displayed."
 
 ;; Extra Buttons
 
+(defconst vkbd-title-button-extras-cus-type
+  '(repeat
+    :tag "Button List"
+    (list :tag "Button"
+          (string :tag "Caption")
+          (string :tag "Help echo")
+          (choice :tag "Action"
+                  (list :tag "Select layout"
+                        :extra-offset 4
+                        (const :format "" :layout)
+                        (symbol :tag "Layout ID"))
+                  (list :tag "Evaluate S-exp"
+                        :extra-offset 4
+                        (const :format "" :eval)
+                        (sexp))
+                  (function :tag "Command")))))
+
 (defcustom vkbd-title-button-extras
   ;; TODO: Use keymap?
   `(("  O  " "Layout 10x7"
@@ -2892,25 +2915,16 @@ When nil, the title bar is not displayed."
 Inside an S-expression or function, you can get the current keyboard
 object using `vkbd-guess-current-keyboard' function."
   :group 'vkbd-title-bar
-  :type '(repeat
-          :tag "Extra Buttons"
-          (list :tag "Button"
-                (string :tag "Caption")
-                (string :tag "Help echo")
-                (choice
-                 (list :tag "Select layout"
-                       (const :format "" :layout) (symbol :tag "Layout ID"))
-                 (list :tag "Evaluate S-exp"
-                       (const :format "" :eval) (sexp))
-                 (function :tag "Command")))))
+  :type vkbd-title-button-extras-cus-type)
 
 (defconst vkbd-title-button-extras-format
   '(:eval (vkbd-make-title-button-extras
            vkbd-current-options)))
 
 (defun vkbd-make-title-button-extras (options)
-  (let ((extras (or (plist-get options :title-extra-buttons)
-                    vkbd-title-button-extras)))
+  (let ((extras (if-let* ((cell (plist-member options :title-extra-buttons)))
+                    (cadr cell)
+                  vkbd-title-button-extras)))
     (cl-loop for (caption help-echo command) in extras
              concat (vkbd-make-title-bar-button options
                                                 caption command help-echo))))
@@ -3073,6 +3087,18 @@ object using `vkbd-guess-current-keyboard' function."
           vkbd-text-key-width)
       (or key-width-ratio 1.0))))
 
+(defconst vkbd-text-key-raise-cus-type
+  '(list :tag "By condition"
+         :extra-offset 4
+         :value ((0.0) (0.0 0.5))
+         (list :tag "Without shift"
+               :extra-offset 4
+               (float :tag "Raise factor"))
+         (list :tag "With shift"
+               :extra-offset 4
+               (float :tag "First character raise factor")
+               (float :tag "Second character raise factor"))))
+
 (defcustom vkbd-text-key-raise '((0.0) (0.0 0.5))
   "Vertical position of characters when displaying multiple characters per key.
 
@@ -3082,13 +3108,8 @@ Format:
 Each value is a multiple of the text height used for the `raise' display
 property. Positive values raise text above the baseline; negative values
 lower it."
-  :type '(list :tag "By condition"
-               (list :tag "Without shift"
-                     (float :tag "Raise factor"))
-               (list :tag "With shift"
-                     (float :tag "First character raise factor")
-                     (float :tag "Second character raise factor")))
-  :group 'vkbd-text-style)
+  :group 'vkbd-text-style
+  :type vkbd-text-key-raise-cus-type)
 
 (defun vkbd-text-key-stringize-key-types (key-types key-width options)
   (let* ((num-types (length key-types))
@@ -3680,6 +3701,15 @@ The format of <keyboard-layout> is:
           (defalias (intern fun-name)
             (vkbd-make-keyboard-layout-set-command layout)))))))
 
+(defconst vkbd-keyboard-layout-cus-type
+  `(choice :format "%[Value Menu%] %v"
+           :value ,(vkbd-layout-id (car vkbd-preset-layout-list))
+           ,@(cl-loop for layout in vkbd-layout-list
+                      collect `(const ,(vkbd-layout-id layout)))
+           (variable :tag "Variable name")
+           (symbol :tag "Layout ID")
+           (sexp :tag "<keyboard-layout>")))
+
 (defcustom vkbd-default-keyboard-layout 'vkbd-layout-10x7
   "Default keyboard layout to use.
 
@@ -3689,12 +3719,8 @@ The following can be specified:
 - A <keyboard-layout> directly
 
 See `vkbd-layout-list' variable."
-  :type `(choice ,@(cl-loop for layout in vkbd-layout-list
-                            collect `(const ,(vkbd-layout-id layout)))
-                 (variable :tag "Variable name")
-                 (symbol :tag "Layout ID")
-                 (sexp :tag "<keyboard-layout>"))
-  :group 'vkbd)
+  :group 'vkbd
+  :type vkbd-keyboard-layout-cus-type)
 
 (defun vkbd-concrete-keyboard-layout-p (layout)
   (and (consp layout) (or (listp (car layout))
@@ -3726,7 +3752,7 @@ See `vkbd-layout-list' variable."
 (defun vkbd-default-keyboard-layout (options)
   "Return the default layout list to use.
 
-OPTIONS is a property list that may contain a `:layout' property."
+OPTIONS is a property list that may contain a `:default-layout' property."
   (or (vkbd-resolve-keyboard-layout-spec (plist-get options :default-layout))
       (vkbd-resolve-keyboard-layout-spec vkbd-default-keyboard-layout)
       vkbd-layout-10x7))
@@ -3764,15 +3790,19 @@ OPTIONS is a property list that may contain a `:layout' property."
 ;;     :translate-event <function (keyboard prompt event):event-vector|nil>
 ;;    )
 
+(defconst vkbd-default-keyboard-style-cus-type
+  '(choice :format "%[Value Menu%] %v"
+           (const vkbd-text01-style)
+           (symbol :tag "Variable name")
+           sexp))
+
 (defcustom vkbd-default-keyboard-style 'vkbd-text01-style
   "Default keyboard style to use.
 
 This can be either a symbol naming a variable that holds a style
 descriptor, or a style descriptor itself."
-  :type '(choice (const vkbd-text01-style)
-                 (symbol :tag "Variable name")
-                 sexp)
-  :group 'vkbd)
+  :group 'vkbd
+  :type vkbd-default-keyboard-style-cus-type)
 
 (defun vkbd-concrete-keyboard-style-p (style)
   (and (consp style) (symbolp (car style))))
@@ -3967,6 +3997,7 @@ The only <data-storage-function> provided by this library is the
 
 (defconst vkbd-data-storage-cus-type
   `(choice
+    :format "%[Value Menu%] %v"
     :value (vkbd-data-storage)
     (cons :tag "Default data storage"
           (const :format "" vkbd-data-storage)
@@ -4415,6 +4446,199 @@ with vkbd.  When ENABLED is nil, restore the default behavior."
       (vkbd-enable-replace-osk)
     (vkbd-disable-replace-osk)))
 
+
+;;;; Options
+
+(defconst vkbd-keyboard-options-cus-type
+  `(set
+    :tag "Property List"
+    :format "%{%t%}:\n%v"
+    :extra-offset 4
+    ;; Title
+    (list :inline t :tag "Title" :format "%{%t%}: %v"
+          (const :format "" :title)
+          (string))
+    (list :inline t :tag "Title Bar Format"
+          (const :format "" :title-bar-format)
+          ,vkbd-title-bar-format-cus-type)
+    (list :inline t :tag "Title Extra Buttons"
+          (const :format "" :title-extra-buttons)
+          ,vkbd-title-button-extras-cus-type)
+    (list :inline t :tag "Title Button Separator Width" :format "%{%t%}: %v"
+          (const :format "" :text-title-button-separator-width)
+          (float :tag "Ratio to frame char width"
+                 :value ,vkbd-text-title-button-separator-width))
+
+    ;; Layout
+    (list :inline t :tag "Layout (Default)" :format "%{%t%}: %v"
+          :value (:default-layout
+                  ,(vkbd-layout-id (car vkbd-preset-layout-list)))
+          (const :format "" :default-layout)
+          ,vkbd-keyboard-layout-cus-type)
+    (list :inline t :tag "Layout (Enforced)" :format "%{%t%}: %v"
+          :value (:layout
+                  ,(vkbd-layout-id (car vkbd-preset-layout-list)))
+          (const :format "" :layout)
+          ,vkbd-keyboard-layout-cus-type)
+
+    ;; Container
+    (list :inline t :tag "Container Type (Default)" :format "%{%t%}: %v"
+          :value (:default-container-type window)
+          (const :format "" :default-container-type)
+          (choice :format "%[Value Menu%] %v"
+                  (const window) (const child-frame) (const independent-frame)
+                  (const nil)))
+    (list :inline t :tag "Container Type (Enforced)" :format "%{%t%}: %v"
+          :value (:container-type window)
+          (const :format "" :container-type)
+          (choice :format "%[Value Menu%] %v"
+                  (const window) (const child-frame) (const independent-frame)
+                  (const nil)))
+
+    (list :inline t :tag "Window Side (Default)" :format "%{%t%}: %v"
+          :value (:default-window-side top)
+          (const :format "" :default-window-side)
+          (choice :format "%[Value Menu%] %v"
+                  (const top) (const bottom) (const left) (const right)
+                  (const nil)))
+    (list :inline t :tag "Window Side (Enforced)" :format "%{%t%}: %v"
+          :value (:window-side top)
+          (const :format "" :window-side)
+          (choice :format "%[Value Menu%] %v"
+                  (const top) (const bottom) (const left) (const right)
+                  (const nil)))
+
+    (list :inline t :tag "Prevent Auto Deletion" :format "%{%t%}: %v"
+          (const :format "" :prevent-auto-deletion)
+          (choice :format "%[Value Menu%] %v"
+                  (const nil) (const window) (const t)))
+
+    (list :inline t :tag "Frame Parameters"
+          (const :format "" :frame-parameters)
+          (alist))
+    (list :inline t :tag "Frame Position" :format "%{%t%}: %v"
+          (const :format "" :frame-position)
+          (cons :format "%v\n"
+                (integer :tag "X" :size 5 :format "%{%t%}: %v ")
+                (integer :tag "Y" :size 5)))
+
+    ;; TODO: Add `vkbd-keyboard-frame-keep-visible-margins'
+
+    ;; Buffer
+
+    (list :inline t :tag "Line Spacing" :format "%{%t%}: %v"
+          (const :format "" :line-spacing)
+          ,vkbd-keyboard-buffer-line-spacing-cus-type)
+    (list :inline t :tag "Buffer Local Variables"
+          (const :format "" :buffer-local-variables)
+          (alist))
+
+    ;; User Data
+    (list :inline t :tag "User Data Storage"
+          (const :format "" :user-data-storage)
+          ,vkbd-data-storage-cus-type)
+
+    ;; Text Style
+    (list :inline t :tag "Text Key Width" :format "%{%t%}: %v"
+          (const :format "" :text-key-width)
+          (integer :tag "Characters" :value ,vkbd-text-key-width))
+    (list :inline t :tag "Text Key Raise"
+          (const :format "" :text-key-raise)
+          ,vkbd-text-key-raise-cus-type)
+    (list :inline t :tag "Text Column Separator Width" :format "%{%t%}: %v"
+          (const :format "" :text-column-separator-width)
+          (float :value ,vkbd-text-column-separator-width))
+    (list :inline t :tag "Text Row Separator Height" :format "%{%t%}: %v"
+          (const :format "" :text-row-separator-height)
+          (float :value ,vkbd-text-row-separator-height))
+    (list :inline t :tag "Faces"
+          (const :format "" :faces)
+          (set :tag "Replacement alist"
+               (cons :format "%v"
+                     :value (vkbd-text-title-bar
+                             . (:inherit vkbd-text-title-bar))
+                     (const vkbd-text-title-bar)
+                     (choice :format "%[Value Menu%] %v"
+                             (face :value vkbd-text-title-bar)
+                             (sexp :value (:inherit vkbd-text-title-bar))))
+               (cons :format "%v"
+                     :value (vkbd-text-title-button
+                             . (:inherit vkbd-text-title-button))
+                     (const vkbd-text-title-button)
+                     (choice :format "%[Value Menu%] %v"
+                             (face :value vkbd-text-title-button)
+                             (sexp :value (:inherit vkbd-text-title-button))))
+               (cons :format "%v"
+                     :value (vkbd-text-title-caption
+                             . (:inherit vkbd-text-title-caption))
+                     (const vkbd-text-title-caption)
+                     (choice :format "%[Value Menu%] %v"
+                             (face :value vkbd-text-title-caption)
+                             (sexp :value (:inherit vkbd-text-title-caption))))
+               (cons :format "%v"
+                     :value (vkbd-text-key
+                             . (:inherit vkbd-text-key))
+                     (const vkbd-text-key)
+                     (choice :format "%[Value Menu%] %v"
+                             (face :value vkbd-text-key)
+                             (sexp :value (:inherit vkbd-text-key))))
+               (cons :format "%v"
+                     :value (vkbd-text-key-pressed
+                             . (:inherit vkbd-text-key-pressed))
+                     (const vkbd-text-key-pressed)
+                     (choice :format "%[Value Menu%] %v"
+                             (face :value vkbd-text-key-pressed)
+                             (sexp :value (:inherit vkbd-text-key-pressed))))
+               (cons :format "%v"
+                     :value (vkbd-text-key-locked
+                             . (:inherit vkbd-text-key-locked))
+                     (const vkbd-text-key-locked)
+                     (choice :format "%[Value Menu%] %v"
+                             (face :value vkbd-text-key-locked)
+                             (sexp :value (:inherit vkbd-text-key-locked))))
+               (cons :format "%v"
+                     :value (vkbd-text-key-invisible
+                             . (:inherit vkbd-text-key-invisible))
+                     (const vkbd-text-key-invisible)
+                     (choice :format "%[Value Menu%] %v"
+                             (face :value vkbd-text-key-invisible)
+                             (sexp :value (:inherit vkbd-text-key-invisible))))
+               (alist :inline t
+                      :tag "Unknown Faces"
+                      :key-type symbol
+                      :value-type (choice :format "%[Value Menu%] %v"
+                                          (face :value default)
+                                          (sexp :value (:inherit default))))))
+
+    ;; Style
+
+    (list :inline t :tag "style" :format "%{%t%}: %v"
+          (const :format "" :style)
+          ,vkbd-default-keyboard-style-cus-type)
+
+    ;;(list :inline t :tag "" (const :format "" :) (sexp))
+
+    (plist :inline t :tag "Unknown Properties"
+           :key-type (symbol :tag "Option name") :value-type (sexp))
+    ))
+
+(defcustom vkbd-global-keyboard-options
+  nil
+  ;; '(:frame-parameters nil :title "Global Keyboard" :title-bar-format nil)
+  "Options for the global keyboard.
+This is a property list passed to `vkbd-make-keyboard' when creating the
+global keyboard."
+  :group 'vkbd
+  :type vkbd-keyboard-options-cus-type)
+
+(defun vkbd-global-keyboard-options ()
+  (let ((options vkbd-global-keyboard-options))
+    (unless (plist-member options :user-data-storage)
+      (setq options
+            (nconc (list :user-data-storage
+                         (vkbd-global-keyboard-user-data-storage))
+                   options)))
+    options))
 
 ;;;; Utilities
 

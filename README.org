@@ -87,21 +87,12 @@ M-x customize-group vkbd
 ** Customization Variables and Faces
 
 Global keyboard settings:
-- `vkbd-global-keyboard-options' : Settings applied only to the global keyboard (search for ~(plist-get options~ to find available options)
+- `vkbd-global-keyboard-options' : Settings applied only to the global keyboard object (You can see the available properties with =M-x customize-variable vkbd-global-keyboard-options=)
 - `vkbd-global-keyboard-user-data-storage' : Storage location for user data (such as frame position) applied only to the global keyboard
 
-Frame settings:
-- `vkbd-keyboard-frame-parameters' : Frame parameters (note that changes may not be immediately reflected due to frame reuse)
-- `vkbd-recycle-frames' : Whether to pool and reuse frames (you can delete all pooled frames with M-x vkbd-delete-all-unused-frames)
-- `vkbd-keyboard-frame-keep-visible-margins' : Margins to keep visible when dragging the virtual keyboard frame
-
-Buffer settings:
-- `vkbd-keyboard-buffer-local-variables' : Buffer local constant variables
-
-Layout & style:
+Layout settings::
 - `vkbd-layout-list' : All layout list
 - `vkbd-default-keyboard-layout' : Default layout
-- `vkbd-default-keyboard-style' (currently only text01 style is available)
 
 Text style settings:
 - Variables:
@@ -139,6 +130,17 @@ Key repeat:
   - `vkbd-key-repeat-delay'
   - `vkbd-key-repeat-interval'
 
+Frame settings:
+- `vkbd-keyboard-frame-parameters' : Frame parameters (note that changes may not be immediately reflected due to frame reuse)
+- `vkbd-recycle-frames' : Whether to pool and reuse frames (you can delete all pooled frames with M-x vkbd-delete-all-unused-frames)
+- `vkbd-keyboard-frame-keep-visible-margins' : Margins to keep visible when dragging the virtual keyboard frame
+
+Buffer settings:
+- `vkbd-keyboard-buffer-local-variables' : Buffer local constant variables
+
+Style settings:
+- `vkbd-default-keyboard-style' (currently only text01 style is available)
+
 Input mechanisms:
   - `vkbd-replace-read-functions'
 
@@ -172,9 +174,10 @@ You can create multiple keyboards with arbitrary settings from Emacs Lisp using 
 (setq my-keyboard
       (vkbd-make-keyboard
        '(:title
-         "My ABCD Keyboard"
-         :layout ((?a ?b ?c ?d)
-                  (?A ?B ?C ?D)))))
+         "My ABCDE Keyboard"
+         :layout ((?a ?b ?c ?d ?e)
+                  (?A ?B ?C ?D ?E))
+         :title-extra-buttons nil)))
 
 (vkbd-keyboard-live-p my-keyboard) ;; => t
 

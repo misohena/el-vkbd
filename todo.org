@@ -4,9 +4,6 @@
 
 * Inbox
 ** TODO スクリーンショットを更新する
-** TODO vkbd-global-keyboard-optionsの:typeを真面目に書く
-これは全てのoptionsを調べてまとめることを意味する。
-
 ** TODO 使用できないシチュエーションについて調べる :INPUT:
 => read系関数については「[[*Emacsのイベント読み取り関数の構造を詳しく調べる][Emacsのイベント読み取り関数の構造を詳しく調べる]]」で調べた。
    その上で「[[*read-event等にadviceを仕込めないか][read-event等にadviceを仕込めないか]]」で解決した。
@@ -1183,5 +1180,17 @@ text-scale-adjustを使うと明らかにレイアウトが崩れる。display�
 
 ** DONE pauseキーを追加する
 CLOSED: [2025-12-03 Wed 17:10]
-
 キー幅調整を改善したついでにusやjpの右上に入れたくなったので。
+
+** DONE vkbd-global-keyboard-optionsの:typeを真面目に書く
+CLOSED: [2025-12-04 Thu 12:39]
+これは全てのoptionsを調べてまとめることを意味する。
+
+いくつか付随する問題も修正した:
+- :layout(:default-layoutではない)と:container-type(:default-container-typeではない)が指定されているときはユーザーが変更できないようにメニューから項目を削除した。メニュー以外の変更も防止するか迷うが今のところ保留。
+- nilを有効な指定値として扱うべきもの(plist-memberを使う):
+  - :frame-parameters
+  - :buffer-local-variables
+  - :title-bar-format
+  - :title-extra-buttons
+
