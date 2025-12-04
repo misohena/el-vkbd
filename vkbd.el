@@ -3215,10 +3215,12 @@ Disadvantages:
                ;; When text is "", consecutive identical objects are
                ;; treated as a single display.
                ;; From an error perspective, it's better not to combine them.
-               (l-space-obj (propertize " " 'display
-                                        (list 'space :width half-w)))
-               (r-space-obj (propertize " " 'display
-                                        (list 'space :width half-w))))
+               (l-space-obj (propertize
+                             " " 'display
+                             (list 'space :width (cons half-w 'width))))
+               (r-space-obj (propertize
+                             " " 'display
+                             (list 'space :width (cons half-w 'width)))))
           (setq text (concat l-space-obj text r-space-obj))))))
   text)
 
