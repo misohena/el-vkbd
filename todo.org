@@ -1257,3 +1257,86 @@ widthを使ってみたが、text-scale-adjustで2段階に1回特定の行が�
 
 まぁ、これをデフォルトで有効にするのはやはり難しそうだ。
 
+** DONE 一部のカスタマイズ変数のカスタマイズでBad Formatエラーがでる
+CLOSED: [2025-12-05 Fri 09:41]
+よく発生する問題。defcustomの:typeに指定するwidgetは:formatに ~"%{%t%}:"~ が含まれていなければならない。
+コロンが無いと"Bad Format"エラーが出る。そして%tがないとカスタマイズバッファ上で項目名が表示されない。さらに%{ %}で囲まれていないとカスタマイズ変数用のfaceで色づかない。そこまで限定するならなんでわざわざ:typeで指定したwidgetの:formatから書式を抽出するのだろうか。意味が分からない。%tを使わずに直接タグ文字列を埋め込んでいたらそれを抽出したい？　なぜ？　同じ物を二回表示したいの？
+
+いくつか解決方法を試した。
+
+一つはdefconstで ~:format~ に見えないコロンを入れる方法。
+
+#+begin_src elisp
+(defconst vkbd-keyboard-buffer-line-spacing-cus-type
+  `(choice :tag ""
+           :format ,(concat "%{%t%}"
+                            (propertize ":" 'display "") ": %[Value Menu%] %v")
+           (const :tag "Global value" global)
+           (const :tag "No extra space" nil)
+           (integer :tag "In pixels")
+           (float :tag "Relative to the default frame line height")))
+
+(defcustom vkbd-keyboard-buffer-line-spacing nil
+  "`line-spacing' value in keyboard buffers."
+  :group 'vkbd-text-style
+  :type vkbd-keyboard-buffer-line-spacing-cus-type)
+#+end_src
+
+これは ~vkbd-keyboard-buffer-line-spacing~ のカスタマイズだけならうまく行くが、 ~vkbd-global-keyboard-options~ に含まれる部分ではうまくいかない。コロンが二重に表示されてしまう。
+
+二つ目はこのchoiceを派生したwidgetを作って、必要に応じて:formatを変える方法。わざわざwidgetを作ったのにchoiceのボタンを含む複雑な:formatをタグのありなしを分けて何度も書かなければならない。
+
+#+begin_src elisp
+(define-widget 'vkbd-line-spacing 'choice
+  ""
+  :tag ""
+  :format (concat "%{%t%}"
+                  (propertize ":" 'display "") ": %[Value Menu%] %v") ;;←見えないコロンと通常のコロンあり(変数毎)
+  :args '((const :tag "Global value" global)
+          (const :tag "No extra space" nil)
+          (integer :tag "In pixels")
+          (float :tag "Relative to the default frame line height")))
+
+(defcustom vkbd-keyboard-buffer-line-spacing nil
+  "`line-spacing' value in keyboard buffers."
+  :group 'vkbd-text-style
+  :type 'vkbd-line-spacing)
+
+(defconst vkbd-keyboard-options-cus-type
+  `(set
+...略...
+    (list :inline t :tag "Line Spacing" :format "%{%t%}: %v"
+          (const :format "" :line-spacing)
+          (vkbd-line-spacing :format "%[Value Menu] %v")) ;;←コロンを消したVer(変数毎)
+#+end_src
+
+三つ目はdefconstは選択項目リストだけにして、choice部分は毎回書く方法。これもchoice派生のwidgetを作るのと同じで:formatを書き分けなければならない。
+
+四つ目は一つの値のみを持つwidgetを作り、それで包むこと。
+
+#+begin_src elisp
+(define-widget 'vkbd-cus-item 'lazy
+  "A widget to avoid \"Bad Format\" errors emitted from the
+`custom-variable-value-create' function in cus-edit.el. It adds a tagged
+`:format' to the type specified by the `:type' argument. The tag
+contains an invisible colon."
+  :tag ""
+  :format (concat "%{%t%}" (propertize ":" 'display "") ": %v")) ;;←複雑な見えないコロンと見えるコロンを含む指定はここだけ
+
+(defconst vkbd-keyboard-buffer-line-spacing-cus-type
+  '(choice :format "%[Value Menu%] %v" ;;←ここで消すのは変数毎に必要(気になるならchoice-without-tagみたいなwidgetを作れば良い)
+           (const :tag "Global value" global)
+           (const :tag "No extra space" nil)
+           (integer :tag "In pixels")
+           (float :tag "Relative to the default frame line height")))
+
+(defcustom vkbd-keyboard-buffer-line-spacing nil
+  "`line-spacing' value in keyboard buffers."
+  :group 'vkbd-text-style
+  :type `(vkbd-cus-item :type ,vkbd-keyboard-buffer-line-spacing-cus-type))
+#+end_src
+
+こうすれば:typeとしてすぐにchoiceを指定するところではvkbd-cus-itemで包めば良いし、vkbd-global-keyboard-optionsの中のような場所ではそのまま使えばよい。line-spacingに限らず同様のケースは他にもいくつかあるので、それにもそのまま適用出来る。
+
+そもそもこれは 「Choice: [Value Menu]」という無駄な表記を「[Value Menu]」にしたかったから生じている問題。無駄な「Choice: 」を諦めるという方法もあるが、vkbd-global-keyboard-optionsのset内では普通に問題なく消せるのだし、customizeバッファの直下でだけできないというのはおかしな話。何よりスペースの無駄。
+

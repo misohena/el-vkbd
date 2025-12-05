@@ -1437,7 +1437,7 @@ returns non-nil)."
 (defcustom vkbd-keyboard-buffer-line-spacing nil
   "`line-spacing' value in keyboard buffers."
   :group 'vkbd-text-style
-  :type vkbd-keyboard-buffer-line-spacing-cus-type)
+  :type `(vkbd-cus-item :type ,vkbd-keyboard-buffer-line-spacing-cus-type))
 
 (defconst vkbd-keyboard-buffer-name " *Virtual Keyboard*")
 
@@ -3741,7 +3741,7 @@ The following can be specified:
 
 See `vkbd-layout-list' variable."
   :group 'vkbd
-  :type vkbd-keyboard-layout-cus-type)
+  :type `(vkbd-cus-item :type ,vkbd-keyboard-layout-cus-type))
 
 (defun vkbd-concrete-keyboard-layout-p (layout)
   (and (consp layout) (or (listp (car layout))
@@ -3823,7 +3823,7 @@ OPTIONS is a property list that may contain a `:default-layout' property."
 This can be either a symbol naming a variable that holds a style
 descriptor, or a style descriptor itself."
   :group 'vkbd
-  :type vkbd-default-keyboard-style-cus-type)
+  :type `(vkbd-cus-item :type ,vkbd-default-keyboard-style-cus-type))
 
 (defun vkbd-concrete-keyboard-style-p (style)
   (and (consp style) (symbolp (car style))))
@@ -4062,7 +4062,7 @@ The only <data-storage-function> provided by this library is the
   "User data storage specification for the global keyboard.
 See `vkbd-data-storage-save' and `vkbd-data-storage' for how to specify this."
   :group 'vkbd
-  :type vkbd-data-storage-cus-type)
+  :type `(vkbd-cus-item :type ,vkbd-data-storage-cus-type))
 
 (defun vkbd-global-keyboard-user-data-storage ()
   vkbd-global-keyboard-user-data-storage)
@@ -5128,6 +5128,16 @@ returns nil."
     (when on-up (funcall on-up event))
     (push (cons t event) unread-command-events)
     event)))
+
+;;;;;; Widget
+
+(define-widget 'vkbd-cus-item 'lazy
+  "A widget to avoid \"Bad Format\" errors emitted from the
+`custom-variable-value-create' function in cus-edit.el. It adds a tagged
+`:format' to the type specified by the `:type' argument. The tag
+contains an invisible colon."
+  :tag ""
+  :format (concat "%{%t%}" (propertize ":" 'display "") ": %v"))
 
 
 (provide 'vkbd)
