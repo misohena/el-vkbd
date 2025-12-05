@@ -3686,6 +3686,7 @@ The format of <keyboard-layout> is:
  <key-spec-property> :
    :w <key-width-ratio>
    :width <key-width-ratio>
+   :w-sep <key-width-in-separator-unit>
 
 
  <key-type> :
