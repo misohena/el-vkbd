@@ -3038,8 +3038,9 @@ object using `vkbd-guess-current-keyboard' function."
      (lambda () ;; between columns
        (vkbd-insert-text-column-separator options))
      (lambda () ;; between rows
-       (insert "\n")
-       (vkbd-insert-text-row-separator options)))))
+       (vkbd-insert-text-key-line-break keyboard)
+       (vkbd-insert-text-row-separator options)))
+    (vkbd-insert-text-key-line-break keyboard)))
 
 (defun vkbd-insert-text-key (keyboard key-spec key-id)
   (let* ((keyobj (vkbd-make-key-object key-id key-spec keyboard))
@@ -3304,6 +3305,53 @@ Advantages:
          "\n" 'face `(:inherit vkbd-text-row-separator
                                :height ,height
                                ))))))
+
+;;;;;;; Insert Key Line Break
+
+(defconst vkbd-text-key-line-height-spec-cus-type
+  '((const :tag "Contents height plus line-spacing" nil)
+    (integer :tag "Pixels" :value 16)
+    (float :tag "Ratio to frame's default line height" :value 1.0)
+    (cons :tag "Ratio to face"
+          (choice :tag "Reference"
+                  :extra-offset 4
+                  (face :tag "Face" vkbd-text-key)
+                  (const :tag "Current Face" t))
+          (choice :tag "Ratio"
+                  :extra-offset 4
+                  (number :tag "Number" :value 1.0)
+                  (const :tag "1.0" nil)))
+    (cons :tag "Ratio to contents height"
+          (const :format "" nil)
+          (number :tag "Number" :value 1.0))))
+
+(defconst vkbd-text-key-line-height-cus-type
+  `(choice :format "%[Value Menu%] %v"
+           :extra-offset 4
+           ,@vkbd-text-key-line-height-spec-cus-type
+           (const :tag "Contents height" t)
+           (list :tag "Height with extra space below"
+                 (choice :tag "Height"
+                         ,@vkbd-text-key-line-height-spec-cus-type)
+                 (choice :tag "Total"
+                         ,@vkbd-text-key-line-height-spec-cus-type))))
+
+(defcustom vkbd-text-key-line-height nil
+  "Height of lines where keyboard keys are placed.
+Specified in the format of the `line-height' text property.
+See Info node `(elisp)Line Height'."
+  :group 'vkbd-text-style
+  :type `(vkbd-cus-item :type ,vkbd-text-key-line-height-cus-type))
+
+(defun vkbd-insert-text-key-line-break (keyboard)
+  (let ((height
+         (if-let* ((cell (plist-member (vkbd-keyboard-options keyboard)
+                                       :text-key-line-height)))
+             (cadr cell)
+           vkbd-text-key-line-height)))
+    (if height
+        (insert (propertize "\n" 'line-height height))
+      (insert "\n"))))
 
 ;;;;;;; Update Keys
 
@@ -4564,6 +4612,9 @@ with vkbd.  When ENABLED is nil, restore the default behavior."
     (list :inline t :tag "Text Key Width" :format "%{%t%}: %v"
           (const :format "" :text-key-width)
           (integer :tag "Characters" :value ,vkbd-text-key-width))
+    (list :inline t :tag "Text Key Line Height" :format "%{%t%}: %v"
+          (const :format "" :text-key-line-height)
+          ,vkbd-text-key-line-height-cus-type)
     (list :inline t :tag "Text Key Raise"
           (const :format "" :text-key-raise)
           ,vkbd-text-key-raise-cus-type)

@@ -130,6 +130,7 @@ Layout settings::
 Text style settings:
 - Variables:
   - `vkbd-text-key-width' : Key width (in characters)
+  - `vkbd-text-key-line-height' : Key line's line-height text property
   - `vkbd-text-key-raise' : Vertical position of characters
   - `vkbd-text-key-centering-method' : Text centering method
   - `vkbd-text-column-separator-width' : Width of spacing between columns (horizontal spacing between keys)
@@ -185,7 +186,7 @@ The easiest way to adjust the overall keyboard height is to change the
 parameter in `vkbd-keyboard-frame-parameters'.
 
 To change only the key height without changing the text size on the keys, adjust
-the :height of `vkbd-text-column-separator'.
+the :height of `vkbd-text-column-separator' or `vkbd-text-key-line-height' variable.
 
 * Replacing the On-Screen Keyboard
 
@@ -233,7 +234,7 @@ On Android, quickly pressing the volume down button twice will trigger a quit. P
 
 This software is licensed under GPLv3. You are free to use, modify and distribute this software.
 
-This is a small token of appreciation for Emacs, the wonderful software that I've been able to use freely. Regarding Emacs-related work, I have no intention of asserting copyright in a restrictive way. Feel free to use it however you likeÅ\or don't use it at all but reference the code, borrow ideas, or just let it inspire you in some way. I simply hope it contributes to making Emacs more useful for everyone.
+This is a small token of appreciation for Emacs, the wonderful software that I've been able to use freely. Regarding Emacs-related work, I have no intention of asserting copyright in a restrictive way. Feel free to use it however you like-or don't use it at all but reference the code, borrow ideas, or just let it inspire you in some way. I simply hope it contributes to making Emacs more useful for everyone.
 
 If you wish to register this software in any package archive, please fork this repository, make the necessary modifications to fit the package archive's requirements, and submit the registration on your own. Also continue with the necessary maintenance. You don't need my permission.
 

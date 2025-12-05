@@ -108,17 +108,6 @@ Virtual Keyboardへのswitch-frameやその逆をinput-decode-mapで妨害でき
 ** TODO サイズに関するオプションをメニューに追加する
 うーん、faceのカスタマイズでやってくれないかな？
 
-** TODO line-heightテキストプロパティでキーの高さを変える
-[[https://www.gnu.org/software/emacs/manual/html_node/elisp/Line-Height.html][Line Height (GNU Emacs Lisp Reference Manual)]]に書いてあるように、line-heightテキストプロパティで行の高さをコントロールできる。
-
-#+begin_src elisp
-(insert "ABCDEFG" (propertize "\n" 'line-height 3.0))
-#+end_src
-
-任意のfaceの高さを基準にすることもできるようだ。
-
-セパレータ用のfaceの:heightを変えるよりマシな方法な気がする。
-
 ** TODO defcustomで設定を変更したときにキーの外観を更新すべきだろうか
 faceで自動的に変わる部分は良いが、セパレータの幅はじめ他のものは自動的には変わらない。調整するのに繰り返し閉じて開き直さないといけない。
 
@@ -1339,4 +1328,30 @@ contains an invisible colon."
 こうすれば:typeとしてすぐにchoiceを指定するところではvkbd-cus-itemで包めば良いし、vkbd-global-keyboard-optionsの中のような場所ではそのまま使えばよい。line-spacingに限らず同様のケースは他にもいくつかあるので、それにもそのまま適用出来る。
 
 そもそもこれは 「Choice: [Value Menu]」という無駄な表記を「[Value Menu]」にしたかったから生じている問題。無駄な「Choice: 」を諦めるという方法もあるが、vkbd-global-keyboard-optionsのset内では普通に問題なく消せるのだし、customizeバッファの直下でだけできないというのはおかしな話。何よりスペースの無駄。
+
+** DONE line-heightテキストプロパティでキーの高さを変える
+CLOSED: [2025-12-05 Fri 20:18]
+[[https://www.gnu.org/software/emacs/manual/html_node/elisp/Line-Height.html][Line Height (GNU Emacs Lisp Reference Manual)]]に書いてあるように、line-heightテキストプロパティで行の高さをコントロールできる。
+
+#+begin_src elisp
+(insert "ABCDEFG" (propertize "\n" 'line-height 3.0))
+#+end_src
+
+任意のfaceの高さを基準にすることもできるようだ。
+
+セパレータ用のfaceの:heightを変えるよりマシな方法な気がする。
+
+変数vkbd-text-key-line-heightと:text-key-line-heightオプションを追加した。
+
+line-heightテキストプロパティの (/height/ /total/) の指定は意味不明。試してみると、heightはテキスト下端から上方向の高さで、totalは不明な場所から下方向の高さになる。totalは行に普通の文字しかない場合はテキスト上端から下方向の高さになっているように見える。しかし大きな文字を混在させると、正直どこから下端までの高さなのか分からない。大きな文字の中心くらい？
+
+#+begin_src elisp
+(insert "ABCDE" (propertize "\n" 'line-height '(40 60)))
+
+(insert (propertize "ABCDE" 'font-lock-face '(:height 2.0)) "ABCDE" (propertize "\n" 'line-height '(40 60))) ;; いや、デフォルトサイズのテキストの上端から下方向かな？　大きさを変えても関係ない？
+
+(insert (propertize "\nABCDEFG\n" 'line-height '(40 60) 'font-lock-face '(:height 300))) ;;いやいや、そうでもない。\nに適用されているフェイスが基準か？　でもこれだと今度はheight指定の方がおかしいぞ。
+#+end_src
+
+意味不明。
 
