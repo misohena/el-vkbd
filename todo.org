@@ -1470,3 +1470,16 @@ vkbd-global-keyboard-optionsも :frame-parameters があるので同様の処理
 バッファローカル変数も一応何とかする。面倒くさいけど。
 [[elisp-function:vkbd-cus-set-with-reset-keyboard-buffers][vkbd-cus-set-with-reset-keyboard-buffers]]
 
+** DONE キータイプをカスタマイズできるようにする
+CLOSED: [2025-12-06 Sat 23:12]
+
+キーテキストを置き換える仕組みは欲しい。矢印キーや修飾キーは変えたいかもしれない。特に英語圏では矢印記号が使えるとは限らない。日本でもEmacsでちゃんと表示できるように設定してあるかは分からない。
+
+[[elisp-variable:vkbd-key-type-alist]]で決まっているのだが、これをどうやってカスタマイズさせるか。
+
+素直に[[elisp-variable:vkbd-user-key-text-alist]]を追加。
+
+vkbd-key-type-alist自体に何かを追加できるようにしたい。ユーザー独自のキータイプを追加したいだろう。
+
+[[elisp-variable:vkbd-user-key-type-alist]]を追加。
+

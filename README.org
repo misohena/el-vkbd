@@ -126,6 +126,8 @@ Global keyboard settings:
 Layout settings::
 - `vkbd-layout-list' : All layout list
 - `vkbd-default-keyboard-layout' : Default layout
+- `vkbd-user-key-type-alist' : Alist of user-defined key types
+- `vkbd-user-key-text-alist' : Alist of display strings for key types
 
 Text style settings:
 - Variables:
@@ -178,7 +180,6 @@ Style settings:
 Input mechanisms:
   - `vkbd-replace-read-functions'
 
-
 ** How to Adjust Size
 
 The easiest way to adjust the overall keyboard height is to change the
@@ -187,6 +188,15 @@ parameter in `vkbd-keyboard-frame-parameters'.
 
 To change only the key height without changing the text size on the keys, adjust
 the :height of `vkbd-text-column-separator' or `vkbd-text-key-line-height' variable.
+
+** Change key text
+
+#+begin_src elisp
+(setq vkbd-user-key-text-alist
+      '((up . "^") (lft . "<-") (rit . "->") (dwn . "v")
+        (ctl . "Ctl") (shf . "Shift") (met . "Meta")
+        (C- . "Ctl") (S- . "Shift") (M- . "Meta")))
+#+end_src
 
 * Replacing the On-Screen Keyboard
 

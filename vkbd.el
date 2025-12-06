@@ -2563,9 +2563,68 @@ Return the resulting modified key."
     (f9  :text "F9" :seq (f9))
     (f10  :text "F10" :seq (f10))
     (f11  :text "F11" :seq (f11))
-    (f12  :text "F12" :seq (f12))))
-;; To customize:
-;;   (setf (plist-get (alist-get 'up vkbd-key-type-alist) :text) "Up")
+    (f12  :text "F12" :seq (f12)))
+  "Alist defining key types.
+
+Each element of the alist is a cons cell whose car is a symbol
+identifying the key type and whose cdr is a plist representing the
+properties of that key type.
+
+The following properties are available:
+
+  - :text <display text string>
+  - :seq <event sequence list>
+
+To customize, use `vkbd-user-key-type-alist' or `vkbd-user-key-text-alist'.")
+
+(defcustom vkbd-user-key-type-alist nil
+  "Alist of user-defined key types.
+
+The format is the same as `vkbd-key-type-alist', but this takes
+precedence over it."
+  :group 'vkbd
+  :type '(alist
+          :key-type (symbol :tag "Key type")
+          :value-type (set :tag "Properties"
+                           (list :inline t :tag "Text"
+                                 (const :format "" :text) (string))
+                           (list :inline t :tag "Keys"
+                                 (const :format "" :seq)
+                                 (repeat
+                                  (choice (symbol)
+                                          (character))))))
+  :set #'vkbd-cus-set-with-recreate-buffer-contents)
+
+(defcustom vkbd-user-key-text-alist nil
+  "Alist of display strings for key types specified by the user.
+
+Each element of the alist is a cons cell whose car is a symbol
+representing the key type and whose cdr is its display string.
+
+This takes precedence over the `:text' property in `vkbd-key-type-alist'
+and `vkbd-user-key-type-alist'.
+
+Example:
+  (setq vkbd-user-key-text-alist
+        \\='((up . \"^\") (lft . \"<-\") (rit . \"->\") (dwn . \"v\")
+         (ctl . \"Ctl\") (shf . \"Shift\") (met . \"Meta\")
+         (C- . \"Ctl\") (S- . \"Shift\") (M- . \"Meta\")))"
+  :group 'vkbd
+  :type `(set
+          :indent 4
+          ,@(cl-loop for (key-type . props) in vkbd-key-type-alist
+                     collect
+                     `(cons :tag ,(format "%s" key-type)
+                            :value (,key-type . ,(plist-get props :text))
+                            :format "%{%t%}: %v"
+                            (const :format "" ,key-type)
+                            (string :format "%v")))
+
+          (alist :inline t :tag "Unknown key types"
+                 :key-type (symbol :tag "Key type")
+                 :value-type (string)))
+  :set #'vkbd-cus-set-with-recreate-buffer-contents)
+
 
 (defun vkbd-key-type-symbol-char (key-type)
   "Return the character if KEY-TYPE is a symbol with a single-character name.
@@ -2593,7 +2652,9 @@ Return nil if KEY-TYPE is nil or not found in the alist."
     (list key-type))
    ((symbolp key-type)
     (or
-     (plist-get (alist-get key-type vkbd-key-type-alist) :seq)
+     (plist-get (or (alist-get key-type vkbd-user-key-type-alist)
+                    (alist-get key-type vkbd-key-type-alist))
+                :seq)
      (when-let* ((char (vkbd-key-type-symbol-char key-type)))
        (list char))))))
 ;; TEST: (vkbd-key-type-to-key-sequence ?a) => (97)
@@ -2651,7 +2712,10 @@ For example:
    ((symbolp key-type)
     (or
      ;; TODO: Select a string that matches KEY-WIDTH ("Ctl" "Ctrl" "Control")
-     (plist-get (alist-get key-type vkbd-key-type-alist) :text)
+     (alist-get key-type vkbd-user-key-text-alist)
+     (plist-get (or (alist-get key-type vkbd-user-key-type-alist)
+                    (alist-get key-type vkbd-key-type-alist))
+                :text)
      (when-let* ((char (vkbd-key-type-symbol-char key-type)))
        (char-to-string char))))))
 
