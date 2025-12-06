@@ -63,31 +63,41 @@
 
 (defvar vkbd-global-keyboard-tool-bar-button-scale 'default)
 
+(defun vkbd-make-tool-bar-icon-image ()
+  (create-image vkbd-keyboard-icon 'svg t
+                :scale vkbd-global-keyboard-tool-bar-button-scale))
+
 ;;;###autoload
 (defun vkbd-add-to-tool-bar ()
+  "Add toolbar button that shows/hides the virtual keyboard.
+
+This enables `vkbd-tool-bar-mode'."
   (interactive)
-  (unless (bound-and-true-p tool-bar-map)
-    (tool-bar-setup))
-  (define-key-after
-    (default-value 'tool-bar-map) [vkbd-toggle-global-keyboard]
-    '(menu-item "Toggle Virtual Keyboard" vkbd-toggle-global-keyboard
-                :image
-                (create-image vkbd-keyboard-icon 'svg t
-                              :scale
-                              vkbd-global-keyboard-tool-bar-button-scale)))
-  (tool-bar--flush-cache)
-  (force-mode-line-update))
-;; EXAMPLE: (vkbd-add-to-tool-bar)
+  (vkbd-tool-bar-mode))
 
 ;;;###autoload
 (defun vkbd-remove-from-tool-bar ()
+  "Remove toolbar button that shows/hides the virtual keyboard.
+
+This disables `vkbd-tool-bar-mode'."
   (interactive)
-  (define-key
-   (default-value 'tool-bar-map) [vkbd-toggle-global-keyboard]
-   nil t)
-  (tool-bar--flush-cache)
-  (force-mode-line-update))
-;; EXAMPLE: (vkbd-remove-from-tool-bar)
+  (vkbd-tool-bar-mode -1))
+
+;;;###autoload
+(define-minor-mode vkbd-tool-bar-mode
+  "Toggle display of toolbar button for virtual keyboard.
+
+Vkbd Toolbar Mode adds a toolbar button that invokes the
+`vkbd-toggle-global-keyboard' command."
+  :group 'vkbd
+  :global t
+  :keymap
+  (let ((km (make-sparse-keymap)))
+    (define-key km [tool-bar vkbd-toggle-global-keyboard]
+                `(menu-item "VKbd" vkbd-toggle-global-keyboard
+                            :image ,(vkbd-make-tool-bar-icon-image)))
+    km))
+
 
 (provide 'vkbd-tool-bar)
-;;; vkbd-tool-bar-mode.el ends here
+;;; vkbd-tool-bar.el ends here

@@ -63,13 +63,13 @@ To display the virtual keyboard, load vkbd.el and type:
 To add a button to toggle the keyboard to the toolbar, add the following code to your init.el:
 
 #+begin_src elisp
-(autoload 'vkbd-add-to-tool-bar "vkbd-tool-bar" nil t)
-(vkbd-add-to-tool-bar)
+(autoload 'vkbd-tool-bar-mode "vkbd-tool-bar" nil t)
+(vkbd-tool-bar-mode)
 #+end_src
 
 Or simply type:
 
-: M-x vkbd-add-to-tool-bar
+: M-x vkbd-tool-bar-mode
 
 * Layouts
 
