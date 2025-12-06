@@ -36,6 +36,8 @@
 
 (require 'cl-lib)
 
+;;;; Customize
+
 (defgroup vkbd nil
   "Virtual keyboard."
   :tag "vkbd"
@@ -161,6 +163,25 @@ one."
       (vkbd-open-global-keyboard)
     (vkbd-close-global-keyboard)))
 
+(defun vkbd-recreate-global-keyboard ()
+  "Recreate the global keyboard if it exists.
+
+Delete the existing global keyboard and create a new one.
+
+Frame recycling is suppressed to ensure frame parameters are properly reset."
+  (when (vkbd-global-keyboard-open-p)
+    (vkbd-delete-all-unused-frames)
+    ;; Suppress frame recycling
+    ;; (Some frame parameter changes don't work when recycled)
+    (let ((old-enabled (vkbd-recycle-frames-p)))
+      (vkbd-set-recycle-frames nil)
+      (unwind-protect
+          (progn
+            (vkbd-close-global-keyboard)
+            (vkbd-open-global-keyboard))
+        (vkbd-set-recycle-frames old-enabled)))
+    t))
+
 
 ;;;; Keyboards
 
@@ -261,9 +282,7 @@ Return a object that holds all information about the keyboard."
 (defun vkbd-delete-all-keyboards ()
   "Forcefully delete all keyboard objects.
 This function is for debugging purposes."
-  (dolist (buffer (buffer-list))
-    (when (vkbd-keyboard-buffer-p buffer)
-      (vkbd-delete-keyboard (vkbd-keyboard-buffer-keyboard buffer)))))
+  (mapc #'vkbd-delete-keyboard (vkbd-all-keyboard-objects)))
 
 ;;;;;; Global Setup
 
@@ -278,9 +297,48 @@ This function is for debugging purposes."
   (vkbd-global-teardown-for-read-event)
   (vkbd-global-teardown-for-user-data-save))
 
+(defun vkbd-global-setup-needed-p ()
+  "Return non-nil if global setup is needed for any keyboard objects."
+  (vkbd-any-keyboard-exists-p))
+
 (defun vkbd-auto-global-teardown ()
-  (unless (seq-some #'vkbd-keyboard-buffer-keyboard (buffer-list))
+  (unless (vkbd-global-setup-needed-p)
     (vkbd-global-teardown)))
+
+;;;;;; Current Keyboard Object
+
+(defvar vkbd-current-keyboard nil
+  "The keyboard object that `vkbd-guess-current-keyboard' should
+preferentially return.
+When you want to clarify the keyboard object to be operated on,
+dynamically bind this variable.")
+
+(defun vkbd-guess-current-keyboard ()
+  "Return the keyboard object currently being operated on."
+  (or vkbd-current-keyboard
+      (vkbd-event-to-keyboard last-command-event)
+      (vkbd-event-to-keyboard last-input-event)
+      (vkbd-keyboard-frame-keyboard last-event-frame)
+      (error "No virtual keyboard")))
+
+;;;;;; All Keyboard Object
+
+(defun vkbd-all-keyboard-objects ()
+  "Return a list of all vkbd keyboard objects."
+  ;; 注意: バッファに自由にキーボードを挿入できるようにするなら、ここ
+  ;; は将来変更するかも。
+  ;; この関数を使っている場所も、一つのキーボードに一つのバッファやウィ
+  ;; ンドウを前提としていることが多いので、修正が必要になるかもしれな
+  ;; い。
+  (cl-loop for buffer being the buffers ;; Same as `in (buffer-list)'
+           for keyboard = (vkbd-keyboard-buffer-keyboard buffer)
+           when (and (vkbd-keyboard-p keyboard)
+                     (vkbd-keyboard-live-p keyboard))
+           collect keyboard))
+
+(defun vkbd-any-keyboard-exists-p ()
+  "Return non-nil if one or more keyboard objects exist."
+  (not (null (vkbd-all-keyboard-objects))))
 
 ;;;;;; Accessors
 
@@ -345,9 +403,7 @@ This function is for debugging purposes."
   (and (consp value) (numberp (car value)) (numberp (cdr value)) value))
 
 (defun vkbd-save-all-keyboard-user-data ()
-  (dolist (buffer (buffer-list))
-    (when-let* ((keyboard (vkbd-keyboard-buffer-keyboard buffer)))
-      (vkbd-save-keyboard-user-data keyboard))))
+  (mapc #'vkbd-save-keyboard-user-data (vkbd-all-keyboard-objects)))
 
 (defun vkbd-global-setup-for-user-data-save ()
   (add-hook 'kill-emacs-hook #'vkbd-save-all-keyboard-user-data))
@@ -400,6 +456,16 @@ specified."
 
   ;; Make a new container
   (vkbd-make-keyboard-container keyboard))
+
+(defun vkbd-recreate-all-keyboard-containers ()
+  (vkbd-delete-all-unused-frames)
+  ;; Suppress frame recycling
+  ;; (Some frame parameter changes don't work when recycled)
+  (let ((old-enabled (vkbd-recycle-frames-p)))
+    (vkbd-set-recycle-frames nil)
+    (unwind-protect
+        (mapc #'vkbd-recreate-keyboard-container (vkbd-all-keyboard-objects))
+      (vkbd-set-recycle-frames old-enabled))))
 
 ;;;;;; Key States
 
@@ -516,22 +582,6 @@ keyboard."
   ;; TODO: Use text property?
   (vkbd-keyboard-buffer-keyboard (vkbd-event-to-keyboard-buffer event)))
 
-;;;;;; Current Keyboard Object
-
-(defvar vkbd-current-keyboard nil
-  "The keyboard object that `vkbd-guess-current-keyboard' should
-preferentially return.
-When you want to clarify the keyboard object to be operated on,
-dynamically bind this variable.")
-
-(defun vkbd-guess-current-keyboard ()
-  "Return the keyboard object currently being operated on."
-  (or vkbd-current-keyboard
-      (vkbd-event-to-keyboard last-command-event)
-      (vkbd-event-to-keyboard last-input-event)
-      (vkbd-keyboard-frame-keyboard last-event-frame)
-      (error "No virtual keyboard")))
-
 ;;;;;; Menu
 
 (defvar vkbd-keyboard-menu-map
@@ -574,9 +624,11 @@ dynamically bind this variable.")
 ;;;;;; Layout
 
 (defun vkbd-keyboard-layout (keyboard)
+  "Return the current layout of KEYBOARD."
   (vkbd-keyboard-property keyboard :layout))
 
 (defun vkbd-current-keyboard-layout-id (keyboard)
+  "Return the current layout ID of KEYBOARD."
   (vkbd-layout-id (vkbd-keyboard-layout keyboard)))
 
 (defun vkbd-set-keyboard-layout (keyboard new-layout-spec)
@@ -586,21 +638,27 @@ dynamically bind this variable.")
            (vkbd-read-keyboard-layout-from-menu keyboard))))
 
   (when-let* ((new-layout (vkbd-resolve-keyboard-layout-spec new-layout-spec)))
-    (let ((vkbd-prevent-keyboard-updates t))
-      (vkbd-clear-keyboard-modifier-state keyboard))
-
-    (with-current-buffer (vkbd-keyboard-buffer keyboard)
-      (vkbd-erase-keyboard-buffer-contents keyboard)
-
-      (setf (vkbd-keyboard-property keyboard :layout) new-layout)
-
-      (vkbd-make-keyboard-buffer-contents keyboard))
-
-    (vkbd-fit-keyboard-container-to-buffer-contents keyboard)
+    (vkbd-recreate-keyboard-buffer-contents
+     keyboard
+     (lambda ()
+       (setf (vkbd-keyboard-property keyboard :layout) new-layout)))
 
     ;; Save
     (when (symbolp new-layout-spec)
       (vkbd-set-keyboard-user-data-save keyboard 'layout new-layout-spec))))
+
+(defun vkbd-reload-keyboard-layout (keyboard)
+  "Reload the layout of KEYBOARD using its current layout ID.
+If KEYBOARD has a layout ID, reapply the layout. This reflects any
+changes to the layout definition."
+  (when-let* ((layout-id (vkbd-current-keyboard-layout-id keyboard)))
+    (vkbd-set-keyboard-layout keyboard layout-id)))
+
+(defun vkbd-cus-set-with-reload-keyboard-layout (symbol value)
+  (when (or (not (boundp symbol))
+            (not (equal (default-value symbol) value)))
+    (set-default symbol value)
+    (mapc #'vkbd-reload-keyboard-layout (vkbd-all-keyboard-objects))))
 
 (defun vkbd-read-keyboard-layout-from-menu (keyboard)
   (car (x-popup-menu
@@ -940,29 +998,28 @@ Called by the following global hooks (with the arguments shown in parentheses):
 This function checks all keyboard buffers and deletes keyboard objects
 that no longer have a valid window displaying them."
   (let ((num-valid-keyboards 0))
-    (dolist (buffer (buffer-list))
-      (when-let* ((keyboard (vkbd-keyboard-buffer-keyboard buffer)))
-        (if (or
-             ;; そもそもウィンドウが関連付けられていない
-             ;; (おそらくcontainer-type切り替え中)
-             (and (null (vkbd-keyboard-container-frame keyboard))
-                  (null (vkbd-keyboard-container-window keyboard)))
-             ;; どこかのウィンドウに表示されている。
-             (get-buffer-window buffer t)
-             ;; container-type=windowの場合、ウィンドウが生きていれば
-             ;; 一応OKとする。
-             ;; which-key-modeのサイドバーが被ると一時的に消えてしまう。
-             ;; その時に削除されると困るので。
-             (window-live-p (vkbd-keyboard-container-window keyboard))
-             ;; オプションで削除が制限されている
-             (let ((options (vkbd-keyboard-options keyboard)))
-               (pcase (plist-get options :prevent-auto-deletion)
-                 ('nil nil)
-                 ('t t)
-                 ('window
-                  (eq (vkbd-keyboard-container-type keyboard) 'window)))))
-            (cl-incf num-valid-keyboards)
-          (vkbd-delete-keyboard--internal keyboard 'invalid-window))))
+    (dolist (keyboard (vkbd-all-keyboard-objects))
+      (if (or
+           ;; そもそもウィンドウが関連付けられていない
+           ;; (おそらくcontainer-type切り替え中)
+           (and (null (vkbd-keyboard-container-frame keyboard))
+                (null (vkbd-keyboard-container-window keyboard)))
+           ;; どこかのウィンドウに表示されている。
+           (get-buffer-window (vkbd-keyboard-buffer keyboard) t)
+           ;; container-type=windowの場合、ウィンドウが生きていれば
+           ;; 一応OKとする。
+           ;; which-key-modeのサイドバーが被ると一時的に消えてしまう。
+           ;; その時に削除されると困るので。
+           (window-live-p (vkbd-keyboard-container-window keyboard))
+           ;; オプションで削除が制限されている
+           (let ((options (vkbd-keyboard-options keyboard)))
+             (pcase (plist-get options :prevent-auto-deletion)
+               ('nil nil)
+               ('t t)
+               ('window
+                (eq (vkbd-keyboard-container-type keyboard) 'window)))))
+          (cl-incf num-valid-keyboards)
+        (vkbd-delete-keyboard--internal keyboard 'invalid-window)))
     num-valid-keyboards))
 
 
@@ -1067,6 +1124,18 @@ get the frame in which the keyboard is displayed, use
 
 ;;;;;;; Frame Creation
 
+(defun vkbd-cus-set-with-recreate-keyboard-containers (symbol value)
+  (when (or (not (boundp symbol))
+            (not (equal (default-value symbol) value)))
+    (set-default symbol value)
+
+    ;; 注意: この関数が最初に呼ばれる時点では、まだ必要な関数が定義され
+    ;; ていない可能性があります。
+    ;; 最初の呼び出し時点ではキーボードは存在しないので、何もする必要は
+    ;; ありません。
+    (when (fboundp 'vkbd-keyboard-frame-parameters)
+      (vkbd-recreate-all-keyboard-containers))))
+
 (defcustom vkbd-keyboard-frame-parameters
   ;; See: (info "(elisp) Window Frame Parameters")
   '(
@@ -1170,7 +1239,8 @@ get the frame in which the keyboard is displayed, use
     )
   "Frame parameters for keyboard frames."
   :group 'vkbd
-  :type 'alist)
+  :type 'alist
+  :set #'vkbd-cus-set-with-recreate-keyboard-containers)
 
 (defun vkbd-keyboard-frame-parameters ()
   "Return `vkbd-keyboard-frame-parameters'."
@@ -1421,23 +1491,19 @@ returns non-nil)."
   "<remap> <split-window-horizontally>" #'vkbd-select-input-target
   )
 
+(defun vkbd-cus-set-with-reset-keyboard-buffers (symbol value)
+  (when (or (not (boundp symbol))
+            (not (equal (default-value symbol) value)))
+    (set-default symbol value)
+    (when (fboundp 'vkbd-reset-keyboard-buffers)
+      (vkbd-reset-keyboard-buffers))))
+
 (defcustom vkbd-keyboard-buffer-local-variables
   '((cursor-type . nil))
   "An alist of local variables and values that apply to keyboard buffers."
   :type 'alist
-  :group 'vkbd)
-
-(defconst vkbd-keyboard-buffer-line-spacing-cus-type
-  '(choice :format "%[Value Menu%] %v"
-           (const :tag "Global value" global)
-           (const :tag "No extra space" nil)
-           (integer :tag "In pixels")
-           (float :tag "Relative to the default frame line height")))
-
-(defcustom vkbd-keyboard-buffer-line-spacing nil
-  "`line-spacing' value in keyboard buffers."
-  :group 'vkbd-text-style
-  :type `(vkbd-cus-item :type ,vkbd-keyboard-buffer-line-spacing-cus-type))
+  :group 'vkbd
+  :set #'vkbd-cus-set-with-reset-keyboard-buffers)
 
 (defconst vkbd-keyboard-buffer-name " *Virtual Keyboard*")
 
@@ -1447,31 +1513,25 @@ returns non-nil)."
   "Create a buffer that holds the keyboard display contents and state.
 
 KEYBOARD is a keyboard object."
-  (let ((options (vkbd-keyboard-options keyboard))
-        (buffer (generate-new-buffer vkbd-keyboard-buffer-name)))
+  (let ((buffer (generate-new-buffer vkbd-keyboard-buffer-name)))
+    (vkbd-keyboard-buffer-initialize-local-variables keyboard buffer)
+    (vkbd-make-keyboard-buffer-contents keyboard buffer)
+    buffer))
+
+(defun vkbd-keyboard-buffer-initialize-local-variables (keyboard buffer)
+  (let ((options (vkbd-keyboard-options keyboard)))
     (with-current-buffer buffer
       (vkbd-keyboard-buffer-mode)
       (setq-local vkbd-keyboard-buffer-keyboard keyboard)
-      ;; Update `line-spacing'
-      (let ((spec (if (plist-member options :line-spacing)
-                      (plist-get options :line-spacing)
-                    vkbd-keyboard-buffer-line-spacing)))
-        (unless (eq spec 'global)
-          (setq-local line-spacing spec)))
-      ;; Make buffer contents
-      (vkbd-make-keyboard-buffer-contents keyboard)
-
       ;; Make local variables
       (dolist (var-val (if-let* ((cell (plist-member options
                                                      :buffer-local-variables)))
                            (cadr cell)
                          vkbd-keyboard-buffer-local-variables))
         (set (make-local-variable (car var-val)) (cdr var-val)))
-
-      ;; Add kill-buffer-hook
+      ;; Add hooks
       (add-hook 'kill-buffer-hook
-                #'vkbd-keyboard-buffer-on-before-buffer-kill nil t))
-    buffer))
+                #'vkbd-keyboard-buffer-on-before-buffer-kill nil t))))
 
 (defun vkbd-keyboard-buffer-on-before-buffer-kill ()
   (vkbd-log "Life Cycle: on-before-buffer-kill current-buffer=%s"
@@ -1480,22 +1540,68 @@ KEYBOARD is a keyboard object."
     (setq-local vkbd-keyboard-buffer-keyboard nil) ;; Prevent re-entry
     (vkbd-delete-keyboard--internal keyboard 'kill-buffer-hook)))
 
-(defun vkbd-make-keyboard-buffer-contents (keyboard)
-  (goto-char (point-min))
-  (let ((inhibit-read-only t))
-    (vkbd-keyboard-style--insert-keyboard keyboard))
-  (goto-char (point-min)))
+(defun vkbd-make-keyboard-buffer-contents (keyboard buffer)
+  ;; Update `line-spacing'
+  (vkbd-update-keyboard-buffer-line-spacing keyboard buffer)
 
-(defun vkbd-erase-keyboard-buffer-contents (keyboard)
+  ;; Buffer contents
+  (with-current-buffer buffer
+    (goto-char (point-min))
+    (let ((inhibit-read-only t))
+      (vkbd-keyboard-style--insert-keyboard keyboard))
+    (goto-char (point-min))))
+
+(defun vkbd-erase-keyboard-buffer-contents (keyboard buffer)
   ;; Stop the key repeat timer if it exists.
   ;; Because clearing the buffer contents will invalidate all key-objects.
   ;; TODO: Should I add delete-key-object and do this from there?
   (vkbd-stop-key-repeat keyboard t)
 
-  (goto-char (point-min))
-  (let ((inhibit-read-only t))
-    (vkbd-keyboard-style--erase-keyboard keyboard))
-  (goto-char (point-min)))
+  (with-current-buffer buffer
+    (goto-char (point-min))
+    (let ((inhibit-read-only t))
+      (vkbd-keyboard-style--erase-keyboard keyboard))
+    (goto-char (point-min))))
+
+(defun vkbd-recreate-keyboard-buffer-contents (keyboard
+                                               &optional
+                                               func-between-erase-and-make)
+  (let ((vkbd-prevent-keyboard-updates t))
+    (vkbd-clear-keyboard-modifier-state keyboard))
+
+  (vkbd-erase-keyboard-buffer-contents keyboard (vkbd-keyboard-buffer keyboard))
+
+  (when func-between-erase-and-make
+    (with-current-buffer (vkbd-keyboard-buffer keyboard)
+      (funcall func-between-erase-and-make)))
+
+  (vkbd-make-keyboard-buffer-contents keyboard (vkbd-keyboard-buffer keyboard))
+
+  (vkbd-fit-keyboard-container-to-buffer-contents keyboard))
+
+(defun vkbd-recreate-all-keyboards-buffer-contents ()
+  "Recreate buffer contents for all vkbd keyboards."
+  (mapc #'vkbd-recreate-keyboard-buffer-contents (vkbd-all-keyboard-objects)))
+
+(defun vkbd-cus-set-with-recreate-buffer-contents (symbol value)
+  (when (or (not (boundp symbol))
+            (not (equal (default-value symbol) value)))
+    (set-default symbol value)
+    (when (fboundp 'vkbd-recreate-all-keyboards-buffer-contents)
+      (vkbd-recreate-all-keyboards-buffer-contents))))
+
+(defun vkbd-reset-keyboard-buffer (keyboard)
+  (vkbd-recreate-keyboard-buffer-contents
+   keyboard
+   (lambda ()
+     ;; Re-enable major-mode and reset all local variables.
+     (vkbd-keyboard-buffer-initialize-local-variables
+      keyboard
+      (vkbd-keyboard-buffer keyboard)))))
+
+(defun vkbd-reset-keyboard-buffers ()
+  (mapc #'vkbd-reset-keyboard-buffer (vkbd-all-keyboard-objects)))
+
 
 (define-derived-mode vkbd-keyboard-buffer-mode nil "VKBD"
   "Major mode for virtual keyboard buffer.
@@ -1523,6 +1629,31 @@ This major mode is for internal use and is not intended for direct user use."
   "Return the keyboard object associated with keyboard BUFFER."
   (when buffer
     (buffer-local-value 'vkbd-keyboard-buffer-keyboard buffer)))
+
+;; Line spacing
+
+(defconst vkbd-keyboard-buffer-line-spacing-cus-type
+  '(choice :format "%[Value Menu%] %v"
+           (const :tag "Global value" global)
+           (const :tag "No extra space" nil)
+           (integer :tag "In pixels")
+           (float :tag "Relative to the default frame line height")))
+
+(defcustom vkbd-keyboard-buffer-line-spacing nil
+  "`line-spacing' value in keyboard buffers."
+  :group 'vkbd-text-style
+  :type `(vkbd-cus-item :type ,vkbd-keyboard-buffer-line-spacing-cus-type)
+  :set #'vkbd-cus-set-with-recreate-buffer-contents)
+
+(defun vkbd-update-keyboard-buffer-line-spacing (keyboard buffer)
+  (let* ((options (vkbd-keyboard-options keyboard))
+         (spec (if (plist-member options :line-spacing)
+                   (plist-get options :line-spacing)
+                 vkbd-keyboard-buffer-line-spacing)))
+    (with-current-buffer buffer
+      (if (eq spec 'global)
+          (kill-local-variable 'line-spacing)
+        (setq-local line-spacing spec)))))
 
 ;;;;;; Frame dragging
 
@@ -1905,6 +2036,20 @@ Return an empty vector ([]) to cancel the input event."
 ;; `read-char-exclusive'. Therefore, we use advice to forcibly apply
 ;; the translation.
 
+(defun vkbd-cus-set-with-update-read-functions (symbol value)
+  (when (or (not (boundp symbol))
+            (not (equal (default-value symbol) value)))
+    (set-default symbol value)
+
+    ;; 注意: 最初にこの関数が呼ばれたときはまだ
+    ;; `vkbd-global-setup-for-read-event'や
+    ;; `vkbd-global-teardown-for-read-event'が定義されていないかもしれない。
+    ;; しかしその時はまだvkbd-keyboardオブジェクトが一つも無いので問題ない。
+    (when (vkbd-global-setup-needed-p)
+      (if value
+          (vkbd-global-setup-for-read-event)
+        (vkbd-global-teardown-for-read-event)))))
+
 (defcustom vkbd-replace-read-functions t
   "Non-nil means replace read functions to apply virtual keyboard translations.
 
@@ -1912,7 +2057,8 @@ When non-nil, `read-event', `read-char', and `read-char-exclusive' are
 advised to apply virtual keyboard event translations (converting
 mouse/touch operations on the virtual keyboard to key events)."
   :type 'boolean
-  :group 'vkbd)
+  :group 'vkbd
+  :set #'vkbd-cus-set-with-update-read-functions)
 
 (defun vkbd-global-setup-for-read-event ()
   "Install advice on read functions to apply virtual keyboard translations."
@@ -2828,7 +2974,8 @@ Return a list of events corresponding to KEYOBJ."
 Converted to a single string by the `format-mode-line' function.
 When nil, the title bar is not displayed."
   :group 'vkbd-title-bar
-  :type vkbd-title-bar-format-cus-type)
+  :type vkbd-title-bar-format-cus-type
+  :set #'vkbd-cus-set-with-recreate-buffer-contents)
 
 (defvar vkbd-current-options nil)
 
@@ -2858,7 +3005,8 @@ When nil, the title bar is not displayed."
 (defcustom vkbd-title-button-close-caption "  x  "
   "Close button text."
   :group 'vkbd-title-bar
-  :type 'string)
+  :type 'string
+  :set #'vkbd-cus-set-with-recreate-buffer-contents)
 
 (defcustom vkbd-title-button-close-format
   '(:eval (vkbd-make-title-bar-button
@@ -2868,7 +3016,8 @@ When nil, the title bar is not displayed."
            (vkbd-msg "Close")))
   "Close button format."
   :group 'vkbd-title-bar
-  :type 'sexp)
+  :type 'sexp
+  :set #'vkbd-cus-set-with-recreate-buffer-contents)
 
 (defun vkbd-title-button-close-on-click (keyboard)
   (interactive (list (vkbd-guess-current-keyboard)))
@@ -2881,7 +3030,8 @@ When nil, the title bar is not displayed."
 (defcustom vkbd-title-button-menu-caption "  =  "
   "Menu button text."
   :group 'vkbd-title-bar
-  :type 'string)
+  :type 'string
+  :set #'vkbd-cus-set-with-recreate-buffer-contents)
 
 (defcustom vkbd-title-button-menu-format
   '(:eval (vkbd-make-title-bar-button
@@ -2891,7 +3041,8 @@ When nil, the title bar is not displayed."
            (vkbd-msg "Menu")))
   "Menu button format."
   :group 'vkbd-title-bar
-  :type 'sexp)
+  :type 'sexp
+  :set #'vkbd-cus-set-with-recreate-buffer-contents)
 
 (defun vkbd-title-button-menu-on-click (keyboard)
   (interactive (list (vkbd-guess-current-keyboard)))
@@ -2934,7 +3085,8 @@ When nil, the title bar is not displayed."
 Inside an S-expression or function, you can get the current keyboard
 object using `vkbd-guess-current-keyboard' function."
   :group 'vkbd-title-bar
-  :type vkbd-title-button-extras-cus-type)
+  :type vkbd-title-button-extras-cus-type
+  :set #'vkbd-cus-set-with-recreate-buffer-contents)
 
 (defconst vkbd-title-button-extras-format
   '(:eval (vkbd-make-title-button-extras
@@ -2999,7 +3151,8 @@ object using `vkbd-guess-current-keyboard' function."
 (defcustom vkbd-text-title-button-separator-width 0.25
   "Width of spacing between buttons (horizontal spacing between buttons)."
   :type 'float
-  :group 'vkbd-title-bar)
+  :group 'vkbd-title-bar
+  :set #'vkbd-cus-set-with-recreate-buffer-contents)
 
 (defconst vkbd-text-title-button-separator-display 'space) ;; or "|"
 
@@ -3098,7 +3251,8 @@ object using `vkbd-guess-current-keyboard' function."
 (defcustom vkbd-text-key-width 5
   "Width of one key (number of characters)."
   :type 'integer
-  :group 'vkbd-text-style)
+  :group 'vkbd-text-style
+  :set #'vkbd-cus-set-with-recreate-buffer-contents)
 
 (defun vkbd-text-key-width (options &optional key-width-ratio)
   "Return the width (number of characters) of one key."
@@ -3129,7 +3283,8 @@ Each value is a multiple of the text height used for the `raise' display
 property. Positive values raise text above the baseline; negative values
 lower it."
   :group 'vkbd-text-style
-  :type vkbd-text-key-raise-cus-type)
+  :type vkbd-text-key-raise-cus-type
+  :set #'vkbd-cus-set-with-recreate-buffer-contents)
 
 (defun vkbd-text-key-stringize-key-types (key-types key-width options)
   (let* ((num-types (length key-types))
@@ -3169,7 +3324,8 @@ See:
   :group 'vkbd-text-style
   :type '(choice (const :tag "Default" nil)
                  (const :tag "Use display properties" display)
-                 (const :tag "Use text characters" char)))
+                 (const :tag "Use text characters" char))
+  :set #'vkbd-cus-set-with-recreate-buffer-contents)
 
 (defun vkbd-text-key-centering (text key-width additional-width)
   "Convert TEXT to a string with KEY-WIDTH (in characters), centering TEXT
@@ -3275,7 +3431,8 @@ Advantages:
 (defcustom vkbd-text-column-separator-width 0.25
   "Width of spacing between columns (horizontal spacing between keys)."
   :type 'float
-  :group 'vkbd-text-style)
+  :group 'vkbd-text-style
+  :set #'vkbd-cus-set-with-recreate-buffer-contents)
 
 (defconst vkbd-text-column-separator-display 'space) ;; or "|"
 
@@ -3294,7 +3451,8 @@ Advantages:
 (defcustom vkbd-text-row-separator-height 0.1
   "Height of spacing between rows (vertical spacing between keys)."
   :type 'float
-  :group 'vkbd-text-style)
+  :group 'vkbd-text-style
+  :set #'vkbd-cus-set-with-recreate-buffer-contents)
 
 (defun vkbd-insert-text-row-separator (options)
   (when (display-graphic-p)
@@ -3341,7 +3499,8 @@ Advantages:
 Specified in the format of the `line-height' text property.
 See Info node `(elisp)Line Height'."
   :group 'vkbd-text-style
-  :type `(vkbd-cus-item :type ,vkbd-text-key-line-height-cus-type))
+  :type `(vkbd-cus-item :type ,vkbd-text-key-line-height-cus-type)
+  :set #'vkbd-cus-set-with-recreate-buffer-contents)
 
 (defun vkbd-insert-text-key-line-break (keyboard)
   (let ((height
@@ -3752,7 +3911,8 @@ The format of <keyboard-layout> is:
                                (symbol :tag "Layout ID")
                                (sexp :tag "Rows and properties"
                                      ,(copy-tree
-                                       (vkbd-layout-rows vkbd-layout-11x7)))))))
+                                       (vkbd-layout-rows vkbd-layout-11x7))))))
+  :set #'vkbd-cus-set-with-reload-keyboard-layout)
 
 (defun vkbd-layout-list ()
   vkbd-layout-list)
@@ -4695,6 +4855,12 @@ with vkbd.  When ENABLED is nil, restore the default behavior."
            :key-type (symbol :tag "Option name") :value-type (sexp))
     ))
 
+(defun vkbd-cus-set-with-recreate-global-keyboard (symbol value)
+  (when (or (not (boundp symbol))
+            (not (equal (default-value symbol) value)))
+    (set-default symbol value)
+    (vkbd-recreate-global-keyboard)))
+
 (defcustom vkbd-global-keyboard-options
   nil
   ;; '(:frame-parameters nil :title "Global Keyboard" :title-bar-format nil)
@@ -4702,7 +4868,8 @@ with vkbd.  When ENABLED is nil, restore the default behavior."
 This is a property list passed to `vkbd-make-keyboard' when creating the
 global keyboard."
   :group 'vkbd
-  :type vkbd-keyboard-options-cus-type)
+  :type vkbd-keyboard-options-cus-type
+  :set #'vkbd-cus-set-with-recreate-global-keyboard)
 
 (defun vkbd-global-keyboard-options ()
   (let ((options vkbd-global-keyboard-options))
@@ -4734,13 +4901,6 @@ frame creation."
   (seq-remove (lambda (param-value)
                 (memq (car param-value) vkbd-unmodifiable-frame-parameters))
               frame-parameters))
-
-(defcustom vkbd-recycle-frames t
-  "Non-nil means recycle frames instead of deleting them immediately.
-When non-nil, deleted frames are kept in a pool for potential reuse.
-When nil, frames are deleted immediately and cannot be reused."
-  :type 'boolean
-  :group 'vkbd)
 
 (defvar vkbd-unused-frames nil
   "List of unused frames.
@@ -4776,7 +4936,7 @@ Return nil if there is no unused frame available for reuse."
   (when (eq (selected-frame) frame)
     (vkbd-focus-previous-non-keyboard-frame))
 
-  (if vkbd-recycle-frames
+  (if (vkbd-recycle-frames-p)
       (vkbd-delete-frame-for-reuse frame)
     (vkbd-delete-frame-immediately frame)))
 
@@ -4842,6 +5002,26 @@ The deleted frame will not be reused."
   "Return non-nil if OBJECT is a frame which has not been deleted."
   (and (frame-live-p object)
        (not (memq object vkbd-unused-frames))))
+
+(defun vkbd-cus-set-with-delete-all-unused-frames (symbol value)
+  (when (or (not (boundp symbol))
+            (not (equal (default-value symbol) value)))
+    (set-default symbol value)
+    (vkbd-delete-all-unused-frames)))
+
+(defcustom vkbd-recycle-frames t
+  "Non-nil means recycle frames instead of deleting them immediately.
+When non-nil, deleted frames are kept in a pool for potential reuse.
+When nil, frames are deleted immediately and cannot be reused."
+  :type 'boolean
+  :group 'vkbd
+  :set #'vkbd-cus-set-with-delete-all-unused-frames)
+
+(defun vkbd-recycle-frames-p ()
+  vkbd-recycle-frames)
+
+(defun vkbd-set-recycle-frames (enabled)
+  (setq vkbd-recycle-frames enabled))
 
 
 ;;;;; Frames

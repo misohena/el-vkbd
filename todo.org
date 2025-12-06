@@ -3,14 +3,6 @@
 #+AUTHOR: AKIYAMA Kouhei
 
 * Inbox
-** TODO C-gはシグナルを発するべき？ :INPUT:
-C-gで脱出できなくて困ることがある。
-先に仕様を理解する必要がある。
-
-** TODO 少なくともread-event系では物理キーに対する修飾キーロックできる :INPUT:
-read-eventを置き換えているので、全てのイベントに対して常時修飾キーを適用出来るはず。
-ただ、read-event系は通常の入力には使われないので、あまり旨味がない気もする。
-
 ** TODO unread-command-eventsをうまく使えないか :INPUT:
 やっぱりunread-command-eventsはread_charで処理しているので、read-eventに作用する。
 
@@ -27,11 +19,23 @@ read-eventを置き換えているので、全てのイベントに対して常�
 
 少なくとも複数のキーを生成するのに使えないか。
 
+** TODO C-gはシグナルを発するべき？ :INPUT:
+C-gで脱出できなくて困ることがある。
+先に仕様を理解する必要がある。
+
+** TODO 少なくともread-event系では物理キーに対する修飾キーロックできる :INPUT:
+read-eventを置き換えているので、全てのイベントに対して常時修飾キーを適用出来るはず。
+ただ、read-event系は通常の入力には使われないので、あまり旨味がない気もする。
+
 ** TODO 下にもバーが欲しいかも？
 (子フレーム表示の時に)
 画面の上の方に避けておきたいときに下にバーがあるとありがたいのだけど。
 その分キーボードが大きくなってしまうから本末転倒かな？
 vkbdを下の方に配置して、かつ、モードラインやミニバッファが見えるように空けたい場合、上下両方にバーがあるとスペースが無駄になる。それ以外の時は、画面外に一方のバーを出してしまうことで無駄を回避できる。
+
+(Window表示の時に)
+上側にサイドウィンドウで表示したときに、ウィンドウの下にタイトルバーが表示できると良いかも？
+さらにそのタイトルバーのドラッグでウィンドウサイズを調整できると良い。
 
 ** TODO key-idは要らない。
 keyboardが全てのキーを保持していれば、オブジェクトのeqで判別できる。
@@ -71,13 +75,8 @@ Virtual Keyboardへのswitch-frameやその逆をinput-decode-mapで妨害でき
 ** TODO SVGキーボードスタイルを追加する
 テキストスタイルが思いのほか綺麗に出来てしまったので、正直SVGで作りたい気持ちはほとんど無くなってしまった。
 
-** TODO 押したらサイズが大きくなるというのはどうだろう
-で、正確なキーの位置へ移動してから離すと入力される。
-領域の小ささを多少カバーできるのではないか。
-まぁ、無茶かな。
-
 ** TODO 任意のバッファ内に直接キーボードを生成できるようにする
-バッファローカルキーボードを作りたい。 +SVG画像じゃないと実用的じゃないと思う+ (←サイズを小さくして部分的にread-onlyにすれば十分使えると思う)。 +これをやるならキーボードの状態はバッファに持たせない方が良い+ (←現状ですでにバッファには持たせないようになった)。 一つのバッファに複数のキーボードを配置する可能性があるので。
+バッファローカルキーボードを作りたい。 +SVG画像じゃないと実用的じゃないと思う+ (←サイズを小さくして部分的にread-onlyにすれば十分使えると思う。ひょっとしたらoverlayのdisplayプロパティでテキストとして表示してしまうという手もある？(正確な位置判定が難しいそう))。 +これをやるならキーボードの状態はバッファに持たせない方が良い+ (←現状ですでにバッファには持たせないようになった)。 一つのバッファに複数のキーボードを配置する可能性があるので。
 
 キーボードオブジェクトをキーボードバッファから取得している次の関数を修正しなければならないはず。
 - vkbd-translate-keyboard-buffer-event
@@ -90,10 +89,12 @@ Virtual Keyboardへのswitch-frameやその逆をinput-decode-mapで妨害でき
 
 バッファに vkbd-keyboard-buffer-keyboard-list という変数を追加してはどうか。もしくは現在の vkbd-keyboard-buffer-keyboard にリストを指定出来るようにするか。もしくはグローバル変数に全キーボードオブジェクトをリストアップするか。全キーボードオブジェクトを巡回する必要がある処理はあるので、素直にグローバルにした方が良いかもしれない。
 
++最低限全部のキーボードオブジェクトを列挙する関数は用意した方が良い。+ vkbd-all-keyboard-objectsを追加。
+
 最大の問題は、現状私はこの機能を必要としていないということ。
 
-** TODO フレームサイズをドラッグで変えられるようにする
-** TODO text-scale-modeと似た原理でサイズを調整できるようにする
+** TODO (サイズ調整)フレームサイズをドラッグで変えられるようにする
+** TODO (サイズ調整)text-scale-modeと似た原理でサイズを調整できるようにする
 現状でもバッファ内で[[elisp-function:text-scale-adjust]]を使えばサイズを変えられる。
 タイトルバーの部分のサイズも調整するかは迷うところ。
 まぁ、細かく変更したいならM-x customize-gruop vkbd-text-styleで調整すべきではある。
@@ -102,22 +103,27 @@ Virtual Keyboardへのswitch-frameやその逆をinput-decode-mapで妨害でき
 
 追記: [[*displayプロパティを使ったセンタリングを改善する][displayプロパティを使ったセンタリングを改善する]]で崩れにくくなった。それでもやはりわずかにズレていることはある。text-scale-modeを使うと倍率によってはズレる。
 
-** TODO サイズをoptionsで変更できるようにしたい
+** TODO (サイズ調整)サイズをoptionsで変更できるようにしたい
 今はvkbd-text-keyboardを変更しなければならない。
 
-** TODO サイズに関するオプションをメニューに追加する
+** TODO (サイズ調整)サイズに関するオプションをメニューに追加する
 うーん、faceのカスタマイズでやってくれないかな？
 
-** TODO defcustomで設定を変更したときにキーの外観を更新すべきだろうか
-faceで自動的に変わる部分は良いが、セパレータの幅はじめ他のものは自動的には変わらない。調整するのに繰り返し閉じて開き直さないといけない。
-
-** TODO キーボードバッファでスクロール出来てしまうのを抑制する
-今現在はほぼ出来なくなっているけれど、それでもまだ =M-: (scroll-up)= とかやれば出来る。また、水平スクロールは制限されていないから =C-x <= や =C-x >= はできてしまう。
-スクロール位置を固定して変えさせないなんて事できるの？
-検出して戻す？
-
 ** TODO vkbd-tool-bar-modeを作る?
+マイナーモードのキーマップにツールバーボタンを定義することって出来るんだっけ？　それが出来るならその方が良いと思うけど。要調査。
+
 * Someday
+** TODO キーボードバッファでスクロール出来てしまうのを抑制する
+今現在はほぼ出来なくなっているけれど、それでもまだ =M-: (scroll-up)= とかやれば出来る。スクロールバーが出ているのなら下ボタンを押せばスクロール出来てしまう。また、水平スクロールは制限されていないから =C-x <= や =C-x >= はできてしまう。極端な話、 =M-: (set-window-start (vkbd-keyboard-container-window vkbd-global-keyboard) (point-max))= とかやれば末尾にスクロールしてキーボードを消してしまえる。
+
+スクロール位置を固定して変えさせないなんて事できるの？　調べた限り直接的に禁止する方法は無い。
+
+検出して戻す？　何かをトリガーにして検出して戻すくらいしか出来ない。window-scroll-functionsは事後的に通知が来る。そこで直接修正するのはやめた方が良さそうなので、タイマーを仕掛けて何とかするくらいか。post-command-hookで毎回チェックするのは悪影響が大きいのでやめた方が良い。
+
+ポイントの移動を禁止するという方法もあり得るが、禁止する方法もそれほど良い方法があるわけでは無い。
+
+現実的には、キーボードバッファの生成・全体更新後に確実にポイントを(point-min)へ移動するくらいだろう。
+
 ** TODO 通常のウィンドウで表示できるようにする
 正直必要ないと思う。
 やるならcontainer-typeにnormal-windowを追加するか、side-window-sideとしてno-sideみたいなのを追加するか、もしくは独立したオプションにするか。
@@ -152,8 +158,18 @@ modifer-bar-modeと同じ原理で処理しているが、修飾キー適用は 
 ** TODO ポイント(カーソル)の位置を自動的に避けてくれるモード
 もはやフレームは使わないので要らないかな。
 
-** TODO 自動的に小さくなったり大きくなってくれたりするモード
+** TODO (サイズ調整)自動的に小さくなったり大きくなってくれたりするモード
 もはやフレームは使わないので要らないかな。
+
+** TODO (サイズ調整)押したらサイズが大きくなるというのはどうだろう
+で、正確なキーの位置へ移動してから離すと入力される。
+領域の小ささを多少カバーできるのではないか。
+まぁ、無茶かな。
+
+** TODO シフト用のキー文字を別faceにする
+シフトキーを押したときに入力される文字を表示するテキストの色を変えたい場合に有用。
+現在はvkbd-text-keyが使われているが、これをvkbd-text-key-for-shiftとかなんとかにする。しかしpressedやlockedのことを考えると気が進まない。
+正直私は要らないと思う。
 
 * Finished
 ** DONE 子フレームにキーボードを表示する
@@ -1354,4 +1370,103 @@ line-heightテキストプロパティの (/height/ /total/) の指定は意味�
 #+end_src
 
 意味不明。
+
+** DONE defcustomで設定を変更したときにキーの外観を更新すべきだろうか
+CLOSED: [2025-12-06 Sat 13:15]
+faceで自動的に変わる部分は良いが、セパレータの幅はじめ他のものは自動的には変わらない。調整するのに繰り返し閉じて開き直さないといけない。
+
+対象となるカスタマイズ変数を列挙する:
+
+| vkbd-keyboard-frame-parameters           | 保留     | フレームプールクリア付きコンテナ再作成 |                                                    |
+| vkbd-keyboard-frame-keep-visible-margins | 保留     | 位置制限適用                           |                                                    |
+| vkbd-keyboard-buffer-local-variables     | 保留     | バッファ作り直し                       |                                                    |
+| vkbd-keyboard-buffer-line-spacing nil    |          | バッファ内容作り直し                   | vkbd-make-keyboard-buffer-contentsに入れてしまう。 |
+| vkbd-title-bar-format                    |          | バッファ内容作り直し                   |                                                    |
+| vkbd-title-button-close-caption          |          | バッファ内容作り直し                   |                                                    |
+| vkbd-title-button-close-format           |          | バッファ内容作り直し                   |                                                    |
+| vkbd-title-button-menu-caption           |          | バッファ内容作り直し                   |                                                    |
+| vkbd-title-button-menu-format            |          | バッファ内容作り直し                   |                                                    |
+| vkbd-title-button-extras                 |          | バッファ内容作り直し                   |                                                    |
+| vkbd-text-title-button-separator-width   |          | バッファ内容作り直し                   |                                                    |
+| vkbd-text-key-width                      |          | バッファ内容作り直し                   |                                                    |
+| vkbd-text-key-raise                      |          | バッファ内容作り直し                   |                                                    |
+| vkbd-text-key-centering-method           |          | バッファ内容作り直し                   |                                                    |
+| vkbd-text-column-separator-width         |          | バッファ内容作り直し                   |                                                    |
+| vkbd-text-row-separator-height           |          | バッファ内容作り直し                   |                                                    |
+| vkbd-text-key-line-height                |          | バッファ内容作り直し                   |                                                    |
+| vkbd-layout-list                         |          |                                        |                                                    |
+| vkbd-default-keyboard-layout             |          |                                        |                                                    |
+| vkbd-default-keyboard-style              |          |                                        |                                                    |
+| vkbd-global-keyboard-user-data-storage   |          | グローバルキーボード作り直し           |                                                    |
+| vkbd-global-keyboard-options             |          | グローバルキーボード作り直し           |                                                    |
+| vkbd-recycle-frames                      |          | フレームプールクリア                   |                                                    |
+| vkbd-replace-read-functions              | 保留     | advice状態更新                         |                                                    |
+| vkbd-key-repeat-delay                    | 関係ない |                                        |                                                    |
+| vkbd-key-repeat-interval                 | 関係ない |                                        |                                                    |
+| vkbd-key-repeat-enabled                  | 関係ない |                                        |                                                    |
+| vkbd-log-generate                        | 関係ない |                                        |                                                    |
+| vkbd-log-output                          | 関係ない |                                        |                                                    |
+
+全キーボードオブジェクトを列挙する関数を追加する:
+- vkbd-all-keyboard-objects
+
+とりあえずバッファ内容の作り直しだけは対応する。
+
+- vkbd-recreate-all-keyboards-buffer-contents
+- vkbd-cus-set-with-recreate-buffer-contents
+
+続きは[[*defcustomの:setを改善する][defcustomの:setを改善する]]へ。
+
+** DONE defcustomの:setを改善する
+CLOSED: [2025-12-06 Sat 19:20]
+バッファ内容の作り直しが必要な部分については[[*defcustomで設定を変更したときにキーの外観を更新すべきだろうか][defcustomで設定を変更したときにキーの外観を更新すべきだろうか]]で修正した。それ以外の部分についてどうするか。
+
+残りの部分:
+
+| 変数名                                   | 対処       | 値変更時に何をすべきか                                                                       |
+|------------------------------------------+------------+----------------------------------------------------------------------------------------------|
+| vkbd-keyboard-frame-parameters           | 対処する   | フレームプールクリア付きコンテナ再作成                                                       |
+| vkbd-keyboard-frame-keep-visible-margins | 保留       | 位置制限適用                                                                                 |
+| vkbd-keyboard-buffer-local-variables     | 対処する   | 内容再作成、メジャーモード再設定、ローカル変数、フック再設定                                 |
+| vkbd-layout-list                         | 対処する   | レイアウトIDが分かるならそれでレイアウトを再設定する                                         |
+| vkbd-default-keyboard-layout             | 何もしない | 何もしない(デフォルトレイアウトは起動してしまえば意味が無い。ユーザーの選択が優先されるので) |
+| vkbd-default-keyboard-style              | 何もしない | 何もしない(デフォルトスタイルは起動してしまえば意味が無い。ユーザーの選択が優先されるので)   |
+| vkbd-global-keyboard-user-data-storage   | 保留       | グローバルキーボード作り直し？　少し不安がある。手動でやってよ                               |
+| vkbd-global-keyboard-options             | 対処する   | グローバルキーボード作り直し。ただし:frame-parametersは反映されない可能性あり                |
+| vkbd-recycle-frames                      | 対処する   | フレームプールクリア                                                                         |
+| vkbd-replace-read-functions              | 対処する   | advice状態更新                                                                               |
+| vkbd-key-repeat-delay                    | 何もしない | びみょー                                                                                     |
+| vkbd-key-repeat-interval                 | 何もしない | びみょー                                                                                     |
+| vkbd-key-repeat-enabled                  | 何もしない | びみょー                                                                                     |
+| vkbd-log-generate                        | 何もしない | 何もしない                                                                                   |
+| vkbd-log-output                          | 何もしない | 何もしない                                                                                   |
+
+個人的にはそこまでちゃんとやらなくても良いんじゃないかなぁと。
+
+user-data-storageに関しては弊害も考えられる。現在の設定が失われたり。
+
+vkbd-replace-read-functionsは簡単だからやろうかな。
+[[elisp-function:vkbd-cus-set-with-update-read-functions]]
+
+vkbd-recycle-framesはunused-framesを消せば良いだろう。もう常に消してしまって良いと思う。
+[[elisp-function:vkbd-cus-set-with-delete-all-unused-frames]]
+
+グローバルキーボードの作り直しなんかは自分でやって欲しいような気もする。「グローバルキーボードを作り直しますか？」みたいに聞いてくれれば一番親切だろうけど。
+[[elisp-function:vkbd-cus-set-with-recreate-global-keyboard]]
+
+レイアウト関連はカスタムレイアウトを作る時に即時適用して欲しい気はする。
+[[elisp-function:vkbd-cus-set-with-reload-keyboard-layout]]
+
+default-layoutやdefault-styleは基本的にオブジェクトを作った時点にのみ影響があるので、変更しても再作成する必要が無いと思う。
+基本的にoptionsによる強制値やユーザーが選択したレイアウトやスタイルが優先されるので。
+唯一、はじめて起動してまだユーザーがレイアウトやスタイルを変更していないときには、切り替えることが正しい可能性はある。
+とはいえ、一度起動してしまったら後は例え選択を変えていなくても、変えないのがユーザーの選択だという解釈はあり得る。
+
+一応フレームパラメータも対応しておくか。
+[[elisp-function:vkbd-cus-set-with-recreate-keyboard-containers]]
+
+vkbd-global-keyboard-optionsも :frame-parameters があるので同様の処理をしないといけない。
+
+バッファローカル変数も一応何とかする。面倒くさいけど。
+[[elisp-function:vkbd-cus-set-with-reset-keyboard-buffers][vkbd-cus-set-with-reset-keyboard-buffers]]
 
