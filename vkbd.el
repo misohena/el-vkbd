@@ -1806,8 +1806,17 @@ Return an empty vector ([]) to cancel the input event."
       [])
      ((listp result-events)
       (vkbd-select-input-target keyboard)
-      (setq last-input-event (car (last result-events))) ;;For context-menu-mode
-      (apply #'vector result-events))
+      (if (cdr result-events)
+          ;; Two or more events
+          (progn
+            (setq unread-command-events
+                  (append unread-command-events
+                          result-events))
+            [])
+        ;; One event
+        (setq last-input-event
+              (car (last result-events))) ;;For context-menu-mode
+        (apply #'vector result-events)))
      (t
       nil))))
 
@@ -2664,7 +2673,8 @@ Return nil if KEY-TYPE is nil or not found in the alist."
 ;; TEST: (vkbd-key-type-to-key-sequence 'a) => (97)
 ;; TEST: (vkbd-key-type-to-key-sequence '$) => (36)
 
-(defun vkbd-fold-key-sequence-modifiers (key-sequence-list initial-modifiers)
+(defun vkbd-fold-key-sequence-modifiers (key-sequence-list initial-modifiers
+                                                           locked-modifiers)
   "Fold modifier keys in KEY-SEQUENCE-LIST into modified key events.
 
 KEY-SEQUENCE-LIST is a list containing both modifier key symbols and key
@@ -2672,6 +2682,8 @@ events.  Each key event is modified by the currently pressed modifiers
 at that point.
 
 INITIAL-MODIFIERS is a list of modifier symbols already pressed.
+
+LOCKED-MODIFIERS is a list of modifier symbols already locked.
 
 Return a cons cell (FOLDED-SEQUENCE . PRESSED-MODIFIERS) where:
 - FOLDED-SEQUENCE is a list of modified key events (modifier keys
@@ -2689,11 +2701,15 @@ For example:
       (if (vkbd-modifier-p key)
           (unless (memq key pressed-modifiers)
             (push key pressed-modifiers))
-        (push (vkbd-apply-modifiers key pressed-modifiers) folded-key-sequence)
+        (push (vkbd-apply-modifiers
+               key
+               (seq-union pressed-modifiers locked-modifiers))
+              folded-key-sequence)
         (setq pressed-modifiers nil)))
     (cons (nreverse folded-key-sequence) pressed-modifiers)))
-;; TEST: (vkbd-fold-key-sequence-modifiers '(?a ?b ?c shift meta return control up control) '(meta hyper)) => ((150995041 98 99 M-S-return C-up) control)
-;; TEST: (vkbd-fold-key-sequence-modifiers '(control ?a ?b meta ?c meta control) nil) => ((1 98 134217827) control meta)
+;; TEST: (vkbd-fold-key-sequence-modifiers '(?a ?b ?c shift meta return control up control) '(meta hyper) nil) => ((150995041 98 99 M-S-return C-up) control)
+;; TEST: (vkbd-fold-key-sequence-modifiers '(control ?a ?b meta ?c meta control) nil nil) => ((1 98 134217827) control meta)
+;; TEST: (vkbd-fold-key-sequence-modifiers '(?a ?b ?c shift meta return control up control) '(meta hyper) '(shift)) => ((150995009 66 67 M-S-return C-S-up) control)
 
 (defun vkbd-key-type-to-simple-modifier (key-type)
   (let ((key-seq (vkbd-key-type-to-key-sequence key-type)))
@@ -2950,7 +2966,8 @@ Return a list of events corresponding to KEYOBJ."
              (events-and-new-modifiers
               (vkbd-fold-key-sequence-modifiers
                (vkbd-key-type-to-key-sequence key-type)
-               (vkbd-keyboard-pressed-modifiers keyboard))))
+               (vkbd-keyboard-pressed-modifiers keyboard)
+               (vkbd-keyboard-locked-modifiers keyboard))))
         (vkbd-set-keyboard-pressed-modifiers keyboard
                                              (cdr events-and-new-modifiers))
         (car events-and-new-modifiers)))))

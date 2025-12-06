@@ -3,25 +3,10 @@
 #+AUTHOR: AKIYAMA Kouhei
 
 * Inbox
-** TODO unread-command-eventsをうまく使えないか :INPUT:
-やっぱりunread-command-eventsはread_charで処理しているので、read-eventに作用する。
-
-#+begin_src elisp
-(let ((unread-command-events (list ?b)))
-  (read-event))
-#+end_src
-
-もちろんvkbdは最初unread-command-eventsを使うやり方で実装を開始したが、今はinput-decode-mapで返すやり方に変わっている。
-
-それはうまくいかないケースがあったからなのだが、それはなんであったかもう忘れた。おそらく修飾キーがらみだと思うけど……。
-
-本当にうまく行かないのだろうか。
-
-少なくとも複数のキーを生成するのに使えないか。
-
 ** TODO C-gはシグナルを発するべき？ :INPUT:
 C-gで脱出できなくて困ることがある。
 先に仕様を理解する必要がある。
+少なくともread-event中に物理キーでC-gを押すと中断されるのに対して、vkbdでC-gを押しても中断されず7が返ってくる。
 
 ** TODO 少なくともread-event系では物理キーに対する修飾キーロックできる :INPUT:
 read-eventを置き換えているので、全てのイベントに対して常時修飾キーを適用出来るはず。
@@ -1482,4 +1467,30 @@ CLOSED: [2025-12-06 Sat 23:12]
 vkbd-key-type-alist自体に何かを追加できるようにしたい。ユーザー独自のキータイプを追加したいだろう。
 
 [[elisp-variable:vkbd-user-key-type-alist]]を追加。
+
+** DONE unread-command-eventsをうまく使えないか :INPUT:
+CLOSED: [2025-12-06 Sat 23:48]
+やっぱりunread-command-eventsはread_charで処理しているので、read-eventに作用する。
+
+#+begin_src elisp
+(let ((unread-command-events (list ?b)))
+  (read-event))
+#+end_src
+
+もちろんvkbdは最初unread-command-eventsを使うやり方で実装を開始したが、今はinput-decode-mapで返すやり方に変わっている。
+
+それはうまくいかないケースがあったからなのだが、それはなんであったかもう忘れた。おそらく修飾キーがらみだと思うけど……。
+
+本当にうまく行かないのだろうか。
+
+少なくとも複数のキーを生成するのに使えないか。
+
+** DONE 一つのキータイプで複数のキーを生成できるようにする
+CLOSED: [2025-12-06 Sat 23:48]
+一つの時はこれまで通りにし、複数の時はunread-command-eventsを使うようにする。
+
+** DONE ロック中に一つのキータイプで複数のキーを生成するとき :INPUT:
+CLOSED: [2025-12-07 Sun 00:11]
+修飾キーロック中に一つのキータイプで複数のキーを生成するとき、最初のキーだけにしか修飾キーが適用されない。この挙動は問題だろうか。
+それが良い場合もあるだろうけど、それはロックじゃないときにそうなれば良いのであって、ロックした以上は全部に効かないとダメだろう。
 
