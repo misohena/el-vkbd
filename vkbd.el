@@ -356,6 +356,11 @@ dynamically bind this variable.")
   "Return the options plist associated with KEYBOARD."
   (vkbd-keyboard-property keyboard :options))
 
+(defmacro vkbd-keyboard-opt (keyboard prop default)
+  `(if-let* ((cell (plist-member (vkbd-keyboard-options ,keyboard) ,prop)))
+       (cadr cell)
+     ,default))
+
 (defun vkbd-keyboard-buffer (keyboard)
   "Return the buffer associated with KEYBOARD."
   (vkbd-keyboard-property keyboard :buffer))
@@ -1264,10 +1269,8 @@ SIZE is a cons cell (WIDTH . HEIGHT) specifying the frame size in pixels."
             (when position
               `((left . ,(car position))
                 (top . ,(cdr position))))
-            (if-let* ((cell (plist-member (vkbd-keyboard-options keyboard)
-                                          :frame-parameters)))
-                (cadr cell)
-              (vkbd-keyboard-frame-parameters))))))
+            (vkbd-keyboard-opt keyboard :frame-parameters
+                               (vkbd-keyboard-frame-parameters))))))
     frame))
 
 (defun vkbd-keyboard-frame-keyboard (frame)
@@ -1519,19 +1522,16 @@ KEYBOARD is a keyboard object."
     buffer))
 
 (defun vkbd-keyboard-buffer-initialize-local-variables (keyboard buffer)
-  (let ((options (vkbd-keyboard-options keyboard)))
-    (with-current-buffer buffer
-      (vkbd-keyboard-buffer-mode)
-      (setq-local vkbd-keyboard-buffer-keyboard keyboard)
-      ;; Make local variables
-      (dolist (var-val (if-let* ((cell (plist-member options
-                                                     :buffer-local-variables)))
-                           (cadr cell)
-                         vkbd-keyboard-buffer-local-variables))
-        (set (make-local-variable (car var-val)) (cdr var-val)))
-      ;; Add hooks
-      (add-hook 'kill-buffer-hook
-                #'vkbd-keyboard-buffer-on-before-buffer-kill nil t))))
+  (with-current-buffer buffer
+    (vkbd-keyboard-buffer-mode)
+    (setq-local vkbd-keyboard-buffer-keyboard keyboard)
+    ;; Make local variables
+    (dolist (var-val (vkbd-keyboard-opt keyboard :buffer-local-variables
+                                        vkbd-keyboard-buffer-local-variables))
+      (set (make-local-variable (car var-val)) (cdr var-val)))
+    ;; Add hooks
+    (add-hook 'kill-buffer-hook
+              #'vkbd-keyboard-buffer-on-before-buffer-kill nil t)))
 
 (defun vkbd-keyboard-buffer-on-before-buffer-kill ()
   (vkbd-log "Life Cycle: on-before-buffer-kill current-buffer=%s"
@@ -1646,10 +1646,8 @@ This major mode is for internal use and is not intended for direct user use."
   :set #'vkbd-cus-set-with-recreate-buffer-contents)
 
 (defun vkbd-update-keyboard-buffer-line-spacing (keyboard buffer)
-  (let* ((options (vkbd-keyboard-options keyboard))
-         (spec (if (plist-member options :line-spacing)
-                   (plist-get options :line-spacing)
-                 vkbd-keyboard-buffer-line-spacing)))
+  (let ((spec (vkbd-keyboard-opt keyboard :line-spacing
+                                 vkbd-keyboard-buffer-line-spacing)))
     (with-current-buffer buffer
       (if (eq spec 'global)
           (kill-local-variable 'line-spacing)
@@ -3023,7 +3021,7 @@ Return a list of events corresponding to KEYOBJ."
 
 (defun vkbd-insert-text-keyboard-title-bar (keyboard)
   (let ((options (vkbd-keyboard-options keyboard)))
-    (let ((title (vkbd-format-title-bar options)))
+    (let ((title (vkbd-format-title-bar keyboard)))
       (when (and (stringp title) (not (string-empty-p title)))
         (insert
          ;; モードラインを表示させたとき、モードラインの右側の何も無い
@@ -3071,11 +3069,10 @@ When nil, the title bar is not displayed."
 
 (defvar vkbd-current-options nil)
 
-(defun vkbd-format-title-bar (options)
-  (let* ((vkbd-current-options options)
-         (format (if-let* ((cell (plist-member options :title-bar-format)))
-                     (cadr cell)
-                   vkbd-title-bar-format)))
+(defun vkbd-format-title-bar (keyboard)
+  (let* ((vkbd-current-options (vkbd-keyboard-options keyboard))
+         (format (vkbd-keyboard-opt keyboard :title-bar-format
+                                    vkbd-title-bar-format)))
     (when format
       (format-mode-line format))))
 
@@ -3602,11 +3599,8 @@ See Info node `(elisp)Line Height'."
   :set #'vkbd-cus-set-with-recreate-buffer-contents)
 
 (defun vkbd-insert-text-key-line-break (keyboard)
-  (let ((height
-         (if-let* ((cell (plist-member (vkbd-keyboard-options keyboard)
-                                       :text-key-line-height)))
-             (cadr cell)
-           vkbd-text-key-line-height)))
+  (let ((height (vkbd-keyboard-opt keyboard :text-key-line-height
+                                   vkbd-text-key-line-height)))
     (if height
         (insert (propertize "\n" 'line-height height))
       (insert "\n"))))
