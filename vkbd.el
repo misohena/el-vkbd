@@ -3641,8 +3641,8 @@ See Info node `(elisp)Line Height'."
   (let ((height (vkbd-keyboard-opt keyboard :text-key-line-height
                                    vkbd-text-key-line-height)))
     (if height
-        (insert (propertize "\n" 'line-height height))
-      (insert "\n"))))
+        (vkbd-insert-propertized (propertize "\n" 'line-height height))
+      (vkbd-insert-propertized "\n"))))
 
 ;;;;;;; Update Keys
 
