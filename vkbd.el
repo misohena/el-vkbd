@@ -197,7 +197,7 @@ Frame recycling is suppressed to ensure frame parameters are properly reset."
   `(plist-get (cdr ,keyboard) ,prop))
 
 (defconst vkbd-keyboard-user-data-item-names
-  '(frame-position layout container-type window-side))
+  '(frame-position layout container-type window-side scale))
 
 (defun vkbd-make-keyboard (&optional options)
   "Create a virtual keyboard (on-screen keyboard).
@@ -356,7 +356,7 @@ dynamically bind this variable.")
   "Return the options plist associated with KEYBOARD."
   (vkbd-keyboard-property keyboard :options))
 
-(defmacro vkbd-keyboard-opt (keyboard prop default)
+(defmacro vkbd-keyboard-opt (keyboard prop &optional default)
   `(if-let* ((cell (plist-member (vkbd-keyboard-options ,keyboard) ,prop)))
        (cadr cell)
      ,default))
@@ -406,6 +406,9 @@ dynamically bind this variable.")
 
 (defun vkbd-cast-cons-numbers (value)
   (and (consp value) (numberp (car value)) (numberp (cdr value)) value))
+
+(defun vkbd-cast-float (value)
+  (and (floatp value) value))
 
 (defun vkbd-save-all-keyboard-user-data ()
   (mapc #'vkbd-save-keyboard-user-data (vkbd-all-keyboard-objects)))
@@ -476,6 +479,54 @@ specified."
     (unwind-protect
         (mapc #'vkbd-recreate-keyboard-container (vkbd-all-keyboard-objects))
       (vkbd-set-recycle-frames old-enabled))))
+
+;;;;;; Scale
+
+(defconst vkbd-keyboard-scale-min 0.25)
+(defconst vkbd-keyboard-scale-max 4.0)
+
+(defun vkbd-keyboard-scale (keyboard)
+  (max vkbd-keyboard-scale-min
+       (min vkbd-keyboard-scale-max
+            (or (vkbd-keyboard-user-data
+                 keyboard 'scale #'vkbd-cast-float)
+                1.0))))
+
+(defun vkbd-set-keyboard-scale (keyboard scale)
+  (when (floatp scale)
+    (setq scale
+          (max vkbd-keyboard-scale-min
+               (min vkbd-keyboard-scale-max
+                    scale)))
+    (unless (= scale (vkbd-keyboard-scale keyboard))
+      (vkbd-set-keyboard-user-data-save keyboard 'scale scale)
+      (vkbd-recreate-keyboard-buffer-contents keyboard))))
+
+(defconst vkbd-keyboard-scale-choices
+  '(0.5 0.625 0.75 0.875 1.0 1.125 1.25 1.5))
+
+(defun vkbd-make-keyboard-scale-selector (scale)
+  (lambda (keyboard)
+    (interactive (list (vkbd-guess-current-keyboard)))
+    (vkbd-set-keyboard-scale keyboard scale)))
+
+(defun vkbd-make-keyboard-scale-menu ()
+  (let ((menu (make-sparse-keymap (vkbd-msg "Select a scale"))))
+    (dolist (scale vkbd-keyboard-scale-choices)
+      (let* ((text (format "%d%%" (round (* 100 scale))))
+             (id (intern (format "vkbd-set-keyboard-scale-%s" scale))))
+        (define-key-after
+          menu (vector id)
+          (list 'menu-item text
+                (vkbd-make-keyboard-scale-selector scale)
+                :button
+                `(:radio . (= ,scale
+                              (vkbd-keyboard-scale
+                               (vkbd-guess-current-keyboard))))))))
+    menu))
+
+(defalias 'vkbd-keyboard-scale-menu
+  (vkbd-make-keyboard-scale-menu))
 
 ;;;;;; Key States
 
@@ -603,6 +654,8 @@ keyboard."
     (define-key-after km [window-side]
       '(menu-item (vkbd-msg "Window Side") vkbd-set-keyboard-window-side
                   :visible nil))
+    (define-key-after km [scale]
+      `(menu-item (vkbd-msg "Scale") vkbd-keyboard-scale-menu))
     (define-key-after km [customize]
       '(menu-item (vkbd-msg "Customize") vkbd-customize))
     (define-key-after km [close]
@@ -3085,26 +3138,25 @@ Can be one of the following symbols:
       pos)))
 
 (defun vkbd-insert-text-keyboard-title-bar (keyboard)
-  (let ((options (vkbd-keyboard-options keyboard)))
-    (let ((title (vkbd-format-title-bar keyboard)))
-      (when (and (stringp title) (not (string-empty-p title)))
-        (insert
-         ;; モードラインを表示させたとき、モードラインの右側の何も無い
-         ;; 部分を押すとなぜかバッファの左上にあるボタンが反応してしま
-         ;; う問題を回避するために見えない空白文字を挿入する。
-         ;; vkbd-keyboard-buffer-local-variablesに(mode-line-format . "xxx")
-         ;; とか(mode-line-format . (:eval vkbd-title-bar-format))など
-         ;; と指定するとモードラインを表示出来るが、モードライン右側の
-         ;; 何も無い部分をクリックするとなぜかタイトルバーの一番最初の
-         ;; ボタンが反応する。何か適当な(キーマップを持たない)文字を追
-         ;; 加すれば回避できるのでそうする。原因はよく分からない(Emacs 30.2)。
-         (propertize " " 'display "")
-         title)
-        (vkbd-insert-propertized
-         "\n"
-         'face (vkbd-get-face-opt options 'vkbd-text-title-bar)
-         'vkbd-draggable t))
-      (vkbd-insert-text-row-separator options))))
+  (let ((title (vkbd-format-title-bar keyboard)))
+    (when (and (stringp title) (not (string-empty-p title)))
+      (insert
+       ;; モードラインを表示させたとき、モードラインの右側の何も無い
+       ;; 部分を押すとなぜかバッファの左上にあるボタンが反応してしま
+       ;; う問題を回避するために見えない空白文字を挿入する。
+       ;; vkbd-keyboard-buffer-local-variablesに(mode-line-format . "xxx")
+       ;; とか(mode-line-format . (:eval vkbd-title-bar-format))など
+       ;; と指定するとモードラインを表示出来るが、モードライン右側の
+       ;; 何も無い部分をクリックするとなぜかタイトルバーの一番最初の
+       ;; ボタンが反応する。何か適当な(キーマップを持たない)文字を追
+       ;; 加すれば回避できるのでそうする。原因はよく分からない(Emacs 30.2)。
+       (propertize " " 'display "")
+       title)
+      (vkbd-insert-propertized
+       "\n"
+       'face (vkbd-text-keyboard-face keyboard 'vkbd-text-title-bar)
+       'vkbd-draggable t))
+    (vkbd-insert-text-row-separator keyboard)))
 
 ;; Format
 
@@ -3132,10 +3184,8 @@ When nil, the title bar is not displayed."
   :type vkbd-title-bar-format-cus-type
   :set #'vkbd-cus-set-with-recreate-buffer-contents)
 
-(defvar vkbd-current-options nil)
-
 (defun vkbd-format-title-bar (keyboard)
-  (let* ((vkbd-current-options (vkbd-keyboard-options keyboard))
+  (let* ((vkbd-current-keyboard keyboard)
          (format (vkbd-keyboard-opt keyboard :title-bar-format
                                     vkbd-title-bar-format)))
     (when format
@@ -3144,14 +3194,14 @@ When nil, the title bar is not displayed."
 ;; Title Caption
 
 (defconst vkbd-title-caption-format
-  '(:eval (vkbd-make-title-caption vkbd-current-options)))
+  '(:eval (vkbd-make-title-caption vkbd-current-keyboard)))
 
-(defun vkbd-make-title-caption (options)
-  (let ((title (plist-get options :title)))
+(defun vkbd-make-title-caption (keyboard)
+  (let ((title (vkbd-keyboard-opt keyboard :title)))
     (when (stringp title)
       (vkbd-text-key-propertized
        title
-       'face (vkbd-get-face-opt options 'vkbd-text-title-caption)
+       'face (vkbd-text-keyboard-face keyboard 'vkbd-text-title-caption)
        'vkbd-draggable t))))
 
 ;; Close Button
@@ -3164,7 +3214,7 @@ When nil, the title bar is not displayed."
 
 (defcustom vkbd-title-button-close-format
   '(:eval (vkbd-make-title-bar-button
-           vkbd-current-options
+           vkbd-current-keyboard
            vkbd-title-button-close-caption
            #'vkbd-title-button-close-on-click
            (vkbd-msg "Close")))
@@ -3189,7 +3239,7 @@ When nil, the title bar is not displayed."
 
 (defcustom vkbd-title-button-menu-format
   '(:eval (vkbd-make-title-bar-button
-           vkbd-current-options
+           vkbd-current-keyboard
            vkbd-title-button-menu-caption
            #'vkbd-title-button-menu-on-click
            (vkbd-msg "Menu")))
@@ -3244,14 +3294,13 @@ object using `vkbd-guess-current-keyboard' function."
 
 (defconst vkbd-title-button-extras-format
   '(:eval (vkbd-make-title-button-extras
-           vkbd-current-options)))
+           vkbd-current-keyboard)))
 
-(defun vkbd-make-title-button-extras (options)
-  (let ((extras (if-let* ((cell (plist-member options :title-extra-buttons)))
-                    (cadr cell)
-                  vkbd-title-button-extras)))
+(defun vkbd-make-title-button-extras (keyboard)
+  (let ((extras (vkbd-keyboard-opt keyboard :title-extra-buttons
+                                   vkbd-title-button-extras)))
     (cl-loop for (caption help-echo command) in extras
-             concat (vkbd-make-title-bar-button options
+             concat (vkbd-make-title-bar-button keyboard
                                                 caption command help-echo))))
 
 ;; Button Common
@@ -3277,11 +3326,11 @@ object using `vkbd-guess-current-keyboard' function."
     (define-key km (kbd "SPC") command)
     km))
 
-(defun vkbd-make-title-bar-button (options caption command help-echo)
+(defun vkbd-make-title-bar-button (keyboard caption command help-echo)
   (concat
    (vkbd-text-key-propertized
     caption
-    'face (vkbd-get-face-opt options 'vkbd-text-title-button)
+    'face (vkbd-text-keyboard-face keyboard 'vkbd-text-title-button)
     'pointer 'hand
     'help-echo help-echo
     'keymap (vkbd-make-title-bar-button-map
@@ -3290,7 +3339,7 @@ object using `vkbd-guess-current-keyboard' function."
                (lambda ()
                  (interactive)
                  (vkbd-execute-title-bar-button-command command)))))
-   (vkbd-make-text-title-button-separator options)))
+   (vkbd-make-text-title-button-separator keyboard)))
 
 (defun vkbd-execute-title-bar-button-command (command)
   (cond
@@ -3307,7 +3356,7 @@ object using `vkbd-guess-current-keyboard' function."
 ;; Separator
 
 (defconst vkbd-title-separator-format
-  '(:eval (vkbd-make-text-title-button-separator vkbd-current-options)))
+  '(:eval (vkbd-make-text-title-button-separator vkbd-current-keyboard)))
 
 (defcustom vkbd-text-title-button-separator-width 0.25
   "Width of spacing between buttons (horizontal spacing between buttons)."
@@ -3321,13 +3370,14 @@ object using `vkbd-guess-current-keyboard' function."
   (or (plist-get options :text-title-button-separator-width)
       vkbd-text-title-button-separator-width))
 
-(defun vkbd-make-text-title-button-separator (options)
-  (vkbd-make-text-separator options
-                            (vkbd-text-title-button-separator-width options)
+(defun vkbd-make-text-title-button-separator (keyboard)
+  (vkbd-make-text-separator keyboard
+                            (vkbd-text-title-button-separator-width
+                             (vkbd-keyboard-options keyboard))
                             vkbd-text-title-button-separator-display
                             'vkbd-text-title-button-separator))
 
-(defun vkbd-make-text-separator (options width display-spec face)
+(defun vkbd-make-text-separator (keyboard width display-spec face)
   (when (and (numberp width) (> width 0))
     (vkbd-text-key-propertized
      " "
@@ -3335,25 +3385,24 @@ object using `vkbd-guess-current-keyboard' function."
      (if (stringp display-spec)
          display-spec
        `(space :width ,width))
-     'face (vkbd-get-face-opt options face))))
+     'face (vkbd-text-keyboard-face keyboard face))))
 
-(defun vkbd-insert-text-separator (options width display-spec face)
-  (insert (vkbd-make-text-separator options width  display-spec face)))
+(defun vkbd-insert-text-separator (keyboard width display-spec face)
+  (insert (vkbd-make-text-separator keyboard width  display-spec face)))
 
 ;;;;;;; Insert Keys
 
 (defun vkbd-insert-text-keyboard-keys (keyboard)
-  (let ((options (vkbd-keyboard-options keyboard))
-        (key-id 0))
+  (let ((key-id 0))
     (vkbd-map-keyboard-layout-keys
      (vkbd-keyboard-layout keyboard)
      (lambda (key-spec)
        (vkbd-insert-text-key keyboard key-spec (cl-incf key-id)))
      (lambda () ;; between columns
-       (vkbd-insert-text-column-separator options))
+       (vkbd-insert-text-column-separator keyboard))
      (lambda () ;; between rows
        (vkbd-insert-text-key-line-break keyboard)
-       (vkbd-insert-text-row-separator options)))
+       (vkbd-insert-text-row-separator keyboard)))
     (vkbd-insert-text-key-line-break keyboard)))
 
 (defun vkbd-insert-text-key (keyboard key-spec key-id)
@@ -3370,7 +3419,8 @@ object using `vkbd-guess-current-keyboard' function."
       (vkbd-text-key-string-invisible keyobj)))
 
 (defun vkbd-text-key-string-invisible (keyobj)
-  (let ((options (vkbd-keyboard-options (vkbd-key-object-keyboard keyobj))))
+  (let* ((keyboard (vkbd-key-object-keyboard keyobj))
+         (options (vkbd-keyboard-options keyboard)))
     (vkbd-text-key-propertized
      (vkbd-text-key-centering
       ""
@@ -3378,7 +3428,7 @@ object using `vkbd-guess-current-keyboard' function."
                                     (vkbd-key-object-key-spec keyobj)))
       (vkbd-key-spec-additional-width (vkbd-key-object-key-spec keyobj)
                                       options))
-     'face (vkbd-get-face-opt options 'vkbd-text-key-invisible)
+     'face (vkbd-text-keyboard-face keyboard 'vkbd-text-key-invisible)
      'pointer 'arrow)))
 
 (defun vkbd-text-key-string-visible (keyobj)
@@ -3577,15 +3627,15 @@ Advantages:
     key-text))
 
 (defun vkbd-text-key-obj-face (keyobj)
-  (let ((options (vkbd-keyboard-options (vkbd-key-object-keyboard keyobj))))
+  (let ((keyboard (vkbd-key-object-keyboard keyobj)))
     (cond
      ((vkbd-key-object-locked-modifier-p keyobj)
-      (vkbd-get-face-opt options 'vkbd-text-key-locked))
+      (vkbd-text-keyboard-face keyboard 'vkbd-text-key-locked))
      ((or (vkbd-key-object-pressed keyobj)
           (vkbd-key-object-pressed-modifier-p keyobj))
-      (vkbd-get-face-opt options 'vkbd-text-key-pressed))
+      (vkbd-text-keyboard-face keyboard 'vkbd-text-key-pressed))
      (t
-      (vkbd-get-face-opt options 'vkbd-text-key)))))
+      (vkbd-text-keyboard-face keyboard 'vkbd-text-key)))))
 
 ;;;;;;; Inert Column Separator
 
@@ -3601,9 +3651,10 @@ Advantages:
   (or (plist-get options :text-column-separator-width)
       vkbd-text-column-separator-width))
 
-(defun vkbd-insert-text-column-separator (options)
-  (vkbd-insert-text-separator options
-                              (vkbd-text-column-separator-width options)
+(defun vkbd-insert-text-column-separator (keyboard)
+  (vkbd-insert-text-separator keyboard
+                              (vkbd-text-column-separator-width
+                               (vkbd-keyboard-options keyboard))
                               vkbd-text-column-separator-display
                               'vkbd-text-column-separator))
 
@@ -3615,15 +3666,16 @@ Advantages:
   :group 'vkbd-text-style
   :set #'vkbd-cus-set-with-recreate-buffer-contents)
 
-(defun vkbd-insert-text-row-separator (options)
+(defun vkbd-insert-text-row-separator (keyboard)
   (when (display-graphic-p)
-    (let ((height (or (plist-get options :text-row-separator-height)
-                      vkbd-text-row-separator-height)))
+    (let ((height (vkbd-keyboard-opt keyboard :text-row-separator-height
+                                     vkbd-text-row-separator-height)))
       (when (and (numberp height) (> height 0))
         (vkbd-insert-propertized
-         "\n" 'face `(:inherit vkbd-text-row-separator
-                               :height ,height
-                               ))))))
+         "\n"
+         'face `(:inherit
+                 ,(vkbd-text-keyboard-face keyboard 'vkbd-text-row-separator)
+                 :height ,height))))))
 
 ;;;;;;; Insert Key Line Break
 
@@ -3667,8 +3719,13 @@ See Info node `(elisp)Line Height'."
   (let ((height (vkbd-keyboard-opt keyboard :text-key-line-height
                                    vkbd-text-key-line-height)))
     (if height
-        (vkbd-insert-propertized (propertize "\n" 'line-height height))
-      (vkbd-insert-propertized "\n"))))
+        (vkbd-insert-propertized
+         "\n"
+         'line-height height
+         'face (vkbd-text-keyboard-face keyboard 'vkbd-text-keyboard))
+      (vkbd-insert-propertized
+       "\n"
+       'face (vkbd-text-keyboard-face keyboard 'vkbd-text-keyboard)))))
 
 ;;;;;;; Update Keys
 
@@ -3870,6 +3927,16 @@ Changing the height of this face also changes the height of title bars."
       face-name))
 ;; TEST: (vkbd-get-face-opt '(:faces ((face-a . (:height 2)))) 'face-a) => (:height 2)
 ;; TEST: (vkbd-get-face-opt '(:faces ((face-a . (:height 2)))) 'face-b) => face-b
+
+(defun vkbd-text-keyboard-face (keyboard face-name)
+  (let ((face (vkbd-get-face-opt (vkbd-keyboard-options keyboard) face-name))
+        (scale (vkbd-keyboard-scale keyboard)))
+    (if (and (floatp scale)
+             (/= scale 1.0)
+             (<= vkbd-keyboard-scale-min
+                 scale vkbd-keyboard-scale-max))
+        (list :inherit face :height scale)
+      face)))
 
 (defun vkbd-text-key-propertized (string &rest properties)
   (unless (plist-member properties 'face)
