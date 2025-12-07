@@ -3183,46 +3183,53 @@ object using `vkbd-guess-current-keyboard' function."
 
 ;; Button Common
 
-(defalias 'vkbd-text-title-bar-button-map
+(defun vkbd-make-title-bar-button-map (command)
   (let ((km (make-sparse-keymap)))
     (define-key km [down-mouse-1] #'ignore)
-    (define-key km [mouse-1] #'vkbd-on-title-bar-button-click)
+    (define-key km [mouse-1] command)
+    (define-key km [mode-line down-mouse-1] #'ignore)
+    (define-key km [mode-line mouse-1] command)
+    (define-key km [header-line down-mouse-1] #'ignore)
+    (define-key km [header-line mouse-1] command)
     (define-key km [touchscreen-begin] #'ignore)
     (define-key km [touchscreen-update] #'ignore)
-    (define-key km [touchscreen-end] #'vkbd-on-title-bar-button-click)
-    (define-key km (kbd "RET") #'vkbd-on-title-bar-button-click)
-    (define-key km (kbd "SPC") #'vkbd-on-title-bar-button-click)
+    (define-key km [touchscreen-end] command)
+    (define-key km [mode-line touchscreen-begin] #'ignore)
+    (define-key km [mode-line touchscreen-update] #'ignore)
+    (define-key km [mode-line touchscreen-end] command)
+    (define-key km [header-line touchscreen-begin] #'ignore)
+    (define-key km [header-line touchscreen-update] #'ignore)
+    (define-key km [header-line touchscreen-end] command)
+    (define-key km (kbd "RET") command)
+    (define-key km (kbd "SPC") command)
     km))
 
 (defun vkbd-make-title-bar-button (options caption command help-echo)
   (concat
    (vkbd-text-key-propertized
     caption
-    'vkbd-button-command command
     'face (vkbd-get-face-opt options 'vkbd-text-title-button)
     'pointer 'hand
     'help-echo help-echo
-    'keymap #'vkbd-text-title-bar-button-map)
+    'keymap (vkbd-make-title-bar-button-map
+             (if (commandp command)
+                 command
+               (lambda ()
+                 (interactive)
+                 (vkbd-execute-title-bar-button-command command)))))
    (vkbd-make-text-title-button-separator options)))
 
-(defun vkbd-on-title-bar-button-click ()
-  (interactive)
-  (let* ((posn (event-start last-command-event))
-         (window (posn-window posn))
-         (point (posn-point posn)))
-    (when (and (windowp window) (integerp point))
-      (with-current-buffer (window-buffer window)
-        (let ((command (get-text-property point 'vkbd-button-command)))
-          (cond
-           ((eq (car-safe command) :eval)
-            (eval (cadr command)))
-           ((eq (car-safe command) :layout)
-            (let ((layout-id (cadr command)))
-              (when (symbolp layout-id)
-                (vkbd-set-keyboard-layout (vkbd-guess-current-keyboard)
-                                          layout-id))))
-           ((commandp command)
-            (call-interactively command))))))))
+(defun vkbd-execute-title-bar-button-command (command)
+  (cond
+   ((eq (car-safe command) :eval)
+    (eval (cadr command)))
+   ((eq (car-safe command) :layout)
+    (let ((layout-id (cadr command)))
+      (when (symbolp layout-id)
+        (vkbd-set-keyboard-layout (vkbd-guess-current-keyboard)
+                                  layout-id))))
+   ((commandp command)
+    (call-interactively command))))
 
 ;; Separator
 
