@@ -3,6 +3,9 @@
 #+AUTHOR: AKIYAMA Kouhei
 
 * Inbox
+** TODO キーの高さはline-heightで設定する方が良い
+1行にキーが一つしか無い場合、column-separatorは挿入されないから。
+
 ** TODO C-gはシグナルを発するべき？ :INPUT:
 C-gで脱出できなくて困ることがある。
 先に仕様を理解する必要がある。
@@ -1497,12 +1500,3 @@ CLOSED: [2025-12-07 Sun 01:39]
 
 vkbd-tool-bar-modeを作成。従来のvkbd-add-to-tool-barとvkbd-remove-from-tool-barはvkbd-tool-bar-modeを呼び出すだけにする。
 
-** DONE キーの高さはline-heightで設定する方が良い
-CLOSED: [2025-12-07 Sun 09:17]
-1行にキーが一つしか無い場合、column-separatorは挿入されないから。
-
-column-separatorの:heightを大きくするとベースラインの下にも空きが増える。しかしline-heightでface相対指定で増やすと下は増えない。
-
-なのでvkbd-text-key-raiseも変更しなければならない。
-
-ついでに vkbd-text-keyboard の継承元も fixed-pitch に変えておく。
