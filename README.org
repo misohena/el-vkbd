@@ -182,12 +182,12 @@ Input mechanisms:
 
 ** How to Adjust Size
 
-The easiest way to adjust the overall keyboard height is to change the
-:height of the `vkbd-text-keyboard' face.You can also change the font
-parameter in `vkbd-keyboard-frame-parameters'.
+The easiest way to adjust the overall keyboard height is to change the :height of the `vkbd-text-keyboard' face. You can also change the font parameter in `vkbd-keyboard-frame-parameters'.
 
 To change only the key height without changing the text size on the keys, adjust
-the :height of `vkbd-text-column-separator' or `vkbd-text-key-line-height' variable.
+the `vkbd-text-key-line-height' variable or :height of `vkbd-text-column-separator'.
+
+To see the relevant customization variables, type M-x customize-group vkbd-text-style.
 
 ** Change key text
 

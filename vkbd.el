@@ -3354,7 +3354,7 @@ object using `vkbd-guess-current-keyboard' function."
                (float :tag "First character raise factor")
                (float :tag "Second character raise factor"))))
 
-(defcustom vkbd-text-key-raise '((0.0) (0.0 0.5))
+(defcustom vkbd-text-key-raise '((0.5) (0.3 0.8))
   "Vertical position of characters when displaying multiple characters per key.
 
 Format:
@@ -3575,7 +3575,7 @@ Advantages:
                  (choice :tag "Total"
                          ,@vkbd-text-key-line-height-spec-cus-type))))
 
-(defcustom vkbd-text-key-line-height nil
+(defcustom vkbd-text-key-line-height '(t . 2.2)
   "Height of lines where keyboard keys are placed.
 Specified in the format of the `line-height' text property.
 See Info node `(elisp)Line Height'."
@@ -3693,8 +3693,7 @@ KEY-FUN must leave point at the end of the key."
 
 (defface vkbd-text-keyboard
   '((t (:inherit
-        ;; fixed-pitch
-        default
+        fixed-pitch ;;or default?
         :height 1.0)))
   "Face for all text in keyboard."
   :group 'vkbd-text-style)
@@ -3753,8 +3752,7 @@ Invisible keys are used to adjust the position of normal keys."
   :group 'vkbd-text-style)
 
 (defface vkbd-text-column-separator
-  '((t (:inherit vkbd-text-keyboard
-                 :height 2.0)))
+  '((t (:inherit vkbd-text-keyboard)))
   "Face for spacing between columns.
 Changing the height of this face also changes the height of keys."
   :group 'vkbd-text-style)
