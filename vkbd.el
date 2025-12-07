@@ -3025,7 +3025,18 @@ Return a list of events corresponding to KEYOBJ."
   (let ((options (vkbd-keyboard-options keyboard)))
     (let ((title (vkbd-format-title-bar options)))
       (when (and (stringp title) (not (string-empty-p title)))
-        (insert title)
+        (insert
+         ;; モードラインを表示させたとき、モードラインの右側の何も無い
+         ;; 部分を押すとなぜかバッファの左上にあるボタンが反応してしま
+         ;; う問題を回避するために見えない空白文字を挿入する。
+         ;; vkbd-keyboard-buffer-local-variablesに(mode-line-format . "xxx")
+         ;; とか(mode-line-format . (:eval vkbd-title-bar-format))など
+         ;; と指定するとモードラインを表示出来るが、モードライン右側の
+         ;; 何も無い部分をクリックするとなぜかタイトルバーの一番最初の
+         ;; ボタンが反応する。何か適当な(キーマップを持たない)文字を追
+         ;; 加すれば回避できるのでそうする。原因はよく分からない(Emacs 30.2)。
+         (propertize " " 'display "")
+         title)
         (vkbd-insert-propertized
          "\n"
          'face (vkbd-get-face-opt options 'vkbd-text-title-bar)
