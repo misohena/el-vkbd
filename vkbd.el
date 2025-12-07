@@ -460,7 +460,12 @@ specified."
   (vkbd-set-keyboard-user-data-save keyboard 'container-type container-type)
 
   ;; Make a new container
-  (vkbd-make-keyboard-container keyboard))
+  (vkbd-make-keyboard-container keyboard)
+
+  ;; Recreate buffer contents
+  ;; Note: Buffer content may depend on the container type
+  ;;       (e.g. `vkbd-title-bar-position' is `auto').
+  (vkbd-recreate-keyboard-buffer-contents keyboard))
 
 (defun vkbd-recreate-all-keyboard-containers ()
   (vkbd-delete-all-unused-frames)
@@ -3014,10 +3019,44 @@ Return a list of events corresponding to KEYOBJ."
 ;;;;;;; Insert Buffer Contents
 
 (defun vkbd-insert-text-keyboard (keyboard)
-  (vkbd-insert-text-keyboard-title-bar keyboard)
-  (vkbd-insert-text-keyboard-keys keyboard))
+  (when (memq (vkbd-title-bar-position keyboard) '(top top-and-bottom))
+    (vkbd-insert-text-keyboard-title-bar keyboard))
+  (vkbd-insert-text-keyboard-keys keyboard)
+  (when (memq (vkbd-title-bar-position keyboard) '(bottom top-and-bottom))
+    (vkbd-insert-text-keyboard-title-bar keyboard)))
 
 ;;;;;;; Insert Title Bar
+
+(defconst vkbd-title-bar-position-cus-type
+  '(choice :format "%[Value Menu%] %v"
+           (const :tag "Top" top)
+           (const :tag "Bottom" bottom)
+           (const :tag "Top and Bottom" top-and-bottom)
+           (const :tag "Auto" auto)
+           (const :tag "None" nil)))
+
+(defcustom vkbd-title-bar-position 'top
+  "Position where the title bar is displayed.
+
+Can be one of the following symbols:
+  - `top' : Display at top
+  - `bottom' : Display at bottom
+  - `top-and-bottom' : Display at both top and bottom
+  - `auto' : Determine based on side window side
+  - `nil' : Do not display"
+  :group 'vkbd-title-bar
+  :type `(vkbd-cus-item :type ,vkbd-title-bar-position-cus-type)
+  :set #'vkbd-cus-set-with-recreate-buffer-contents)
+
+(defun vkbd-title-bar-position (keyboard)
+  (let ((pos (vkbd-keyboard-opt keyboard :title-bar-position
+                                vkbd-title-bar-position)))
+    (if (eq pos 'auto)
+        (if (and (eq (vkbd-keyboard-container-type keyboard) 'window)
+                 (eq (vkbd-keyboard-window-side keyboard) 'top))
+            'bottom
+          'top)
+      pos)))
 
 (defun vkbd-insert-text-keyboard-title-bar (keyboard)
   (let ((options (vkbd-keyboard-options keyboard)))
@@ -4790,6 +4829,10 @@ with vkbd.  When ENABLED is nil, restore the default behavior."
           (const :format "" :text-title-button-separator-width)
           (float :tag "Ratio to frame char width"
                  :value ,vkbd-text-title-button-separator-width))
+    (list :inline t :tag "Title Bar Position" :format "%{%t%}: %v"
+          :value (:title-bar-position top)
+          (const :format "" :title-bar-position)
+          ,vkbd-title-bar-position-cus-type)
 
     ;; Layout
     (list :inline t :tag "Layout (Default)" :format "%{%t%}: %v"
