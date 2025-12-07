@@ -1789,39 +1789,51 @@ Return an empty vector ([]) to cancel the input event."
       (vkbd-log "Translate Event: Return %s" result)
       result)))
 
+(defun vkbd-translate-keyboard-event-result (keyboard result-events)
+  "Convert the return value of `vkbd-translate-keyboard-event' to the
+return value of the translation function of `input-decode-map'."
+  (vkbd-log "Translate Event: Result=%s" result-events)
+  (cond
+   ;; No conversion
+   ((eq result-events 'no-conv)
+    nil)
+   ;; Empty
+   ((null result-events)
+    (vkbd-select-input-target keyboard)
+    [])
+   ;; One or more events
+   ((consp result-events)
+    (vkbd-select-input-target keyboard)
+    ;; TODO: ここでquitの再現をしたいが、read-key-sequenceの挙動の再現が
+    ;;       難しすぎる。現在はread-eventの所でだけ再現をしている。
+    ;;       `vkbd-emulate-quit'の使用箇所を見よ。
+    (if (cdr result-events)
+        ;; Two or more events
+        (progn
+          (setq unread-command-events
+                (append unread-command-events
+                        result-events))
+          [])
+      ;; One event
+      (setq last-input-event
+            (car (last result-events))) ;;For context-menu-mode
+      (apply #'vector result-events)))
+   ;; Unknown
+   (t
+    nil)))
+
 (defun vkbd-translate-keyboard-event (keyboard _prompt event key-picker)
   ;; Called when events in `vkbd-translation-event-types' occur.
-  (let ((result-events
-         (if (vkbd-keyboard-key-repeat-state keyboard)
-             ;; In key repeat state
-             ;; キーリピートの待ち時間中(キーイベントを返してそれが消
-             ;; 費されて再び戻ってくるまでの間)に何かイベントが発生し
-             ;; たら、キーリピートを停止する。
-             (vkbd-translate-keyboard-event--in-key-repeat-state keyboard event)
-           ;; Not in key repeat state
-           (vkbd-translate-keyboard-event-loop keyboard event key-picker))))
-    (vkbd-log "Translate Event: Result=%s" result-events)
-    (cond
-     ((eq result-events 'no-conv)
-      nil)
-     ((null result-events)
-      (vkbd-select-input-target keyboard)
-      [])
-     ((listp result-events)
-      (vkbd-select-input-target keyboard)
-      (if (cdr result-events)
-          ;; Two or more events
-          (progn
-            (setq unread-command-events
-                  (append unread-command-events
-                          result-events))
-            [])
-        ;; One event
-        (setq last-input-event
-              (car (last result-events))) ;;For context-menu-mode
-        (apply #'vector result-events)))
-     (t
-      nil))))
+  (vkbd-translate-keyboard-event-result
+   keyboard
+   (if (vkbd-keyboard-key-repeat-state keyboard)
+       ;; In key repeat state
+       ;; キーリピートの待ち時間中(キーイベントを返してそれが消
+       ;; 費されて再び戻ってくるまでの間)に何かイベントが発生し
+       ;; たら、キーリピートを停止する。
+       (vkbd-translate-keyboard-event--in-key-repeat-state keyboard event)
+     ;; Not in key repeat state
+     (vkbd-translate-keyboard-event-loop keyboard event key-picker))))
 
 (defun vkbd-translate-keyboard-event--in-key-repeat-state (keyboard event)
   (vkbd-log
@@ -2134,6 +2146,18 @@ keystroke events."
               'vkbd-retry))
       event)))
 
+(defconst vkbd-emulate-quit t)
+
+(defun vkbd-quit-char ()
+  (cadddr (current-input-mode)))
+
+(defun vkbd-quit-if-contains-quit-char (seq)
+  (when (and vkbd-emulate-quit
+             (not inhibit-quit)
+             (seq-contains-p seq (vkbd-quit-char) #'eq))
+    ;; Not (setq quit-flag t)
+    (keyboard-quit)))
+
 (defun vkbd-read-event--translete (event)
   (if event
       (let* ((current-key-remap-sequence (vector event))
@@ -2146,7 +2170,9 @@ keystroke events."
                 ;; Use translated event
                 ;; TODO: Use the entire translated-sequence?
                 ;; or 0 or (1- (length ..))?
-                (aref translated-sequence 0)
+                (progn
+                  (vkbd-quit-if-contains-quit-char translated-sequence)
+                  (aref translated-sequence 0))
               ;; Cancel EVENT and retry
               'vkbd-retry)
           ;; No need to translate.
