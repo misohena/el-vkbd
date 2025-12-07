@@ -3693,8 +3693,7 @@ KEY-FUN must leave point at the end of the key."
 
 (defface vkbd-text-keyboard
   '((t (:inherit
-        ;; fixed-pitch
-        default
+        fixed-pitch ;; or default?
         :height 1.0)))
   "Face for all text in keyboard."
   :group 'vkbd-text-style)
