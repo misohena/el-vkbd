@@ -3361,7 +3361,7 @@ object using `vkbd-guess-current-keyboard' function."
 (defcustom vkbd-text-title-button-separator-width 0.25
   "Width of spacing between buttons (horizontal spacing between buttons)."
   :type 'float
-  :group 'vkbd-title-bar
+  :group 'vkbd-text-style
   :set #'vkbd-cus-set-with-recreate-buffer-contents)
 
 (defconst vkbd-text-title-button-separator-display 'space) ;; or "|"
