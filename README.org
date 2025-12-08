@@ -84,7 +84,7 @@ Based on vkbd-layout-10x9, reduced to 7 rows. Most symbols require shift to ente
 
 [[file:screenshot/layout-11x7.png]]
 
-Based on `vkbd-layout-10x7' with one additional column. Allows entering more symbols without shift while maintaining compactness.
+Based on =vkbd-layout-10x7= with one additional column. Allows entering more symbols without shift while maintaining compactness.
 
 ** vkbd-layout-us
 
@@ -113,74 +113,74 @@ Type M-x customize-group vkbd
 ** Customization Variables and Faces
 
 Global keyboard settings:
-- `vkbd-global-keyboard-options' : Settings applied only to the global keyboard object (You can see the available properties with =M-x customize-variable vkbd-global-keyboard-options=)
-- `vkbd-global-keyboard-user-data-storage' : Storage location for user data (such as frame position) applied only to the global keyboard
+- =vkbd-global-keyboard-options= : Settings applied only to the global keyboard object (You can see the available properties with =M-x customize-variable vkbd-global-keyboard-options=)
+- =vkbd-global-keyboard-user-data-storage= : Storage location for user data (such as frame position) applied only to the global keyboard
 
 Layout settings::
-- `vkbd-layout-list' : All layout list
-- `vkbd-default-keyboard-layout' : Default layout
-- `vkbd-user-key-type-alist' : Alist of user-defined key types
-- `vkbd-user-key-text-alist' : Alist of display strings for key types
+- =vkbd-layout-list= : All layout list
+- =vkbd-default-keyboard-layout= : Default layout
+- =vkbd-user-key-type-alist= : Alist of user-defined key types
+- =vkbd-user-key-text-alist= : Alist of display strings for key types
 
 Text style settings:
 - Variables:
-  - `vkbd-text-key-width' : Key width (in characters)
-  - `vkbd-text-key-line-height' : Key line's line-height text property
-  - `vkbd-text-key-raise' : Vertical position of characters
-  - `vkbd-text-key-centering-method' : Text centering method
-  - `vkbd-text-column-separator-width' : Width of spacing between columns (horizontal spacing between keys)
-  - `vkbd-text-row-separator-height' : Height of spacing between rows (vertical spacing between keys)
-  - `vkbd-keyboard-buffer-line-spacing' : `line-spacing' value in keyboard buffers
-  - `vkbd-text-title-button-separator-width' : Width of spacing between buttons on the title bar (horizontal spacing between buttons)
+  - =vkbd-text-key-width= : Key width (in characters)
+  - =vkbd-text-key-line-height= : Key line's line-height text property
+  - =vkbd-text-key-raise= : Vertical position of characters
+  - =vkbd-text-key-centering-method= : Text centering method
+  - =vkbd-text-column-separator-width= : Width of spacing between columns (horizontal spacing between keys)
+  - =vkbd-text-row-separator-height= : Height of spacing between rows (vertical spacing between keys)
+  - =vkbd-keyboard-buffer-line-spacing= : =line-spacing= value in keyboard buffers
+  - =vkbd-text-title-button-separator-width= : Width of spacing between buttons on the title bar (horizontal spacing between buttons)
 - Faces
-  - `vkbd-text-keyboard' : Entire keyboard
-  - `vkbd-text-key-common' : Key area
-  - `vkbd-text-key' : Normal key
-  - `vkbd-text-key-pressed' : Pressed key
-  - `vkbd-text-key-locked' : Locked key
-  - `vkbd-text-key-invisible' : Invisible key (used to adjust key positions)
-  - `vkbd-text-column-separator' : Spacing between columns (horizontal)
-  - `vkbd-text-row-separator' : Spacing between rows (vertical)
-  - `vkbd-text-title-bar' : Entire title bar
-  - `vkbd-text-title-button' : Title bar buttons
-  - `vkbd-text-title-button-separator' : Spacing between buttons (horizontal)
-  - `vkbd-text-title-caption' : Title bar text
+  - =vkbd-text-keyboard= : Entire keyboard
+  - =vkbd-text-key-common= : Key area
+  - =vkbd-text-key= : Normal key
+  - =vkbd-text-key-pressed= : Pressed key
+  - =vkbd-text-key-locked= : Locked key
+  - =vkbd-text-key-invisible= : Invisible key (used to adjust key positions)
+  - =vkbd-text-column-separator= : Spacing between columns (horizontal)
+  - =vkbd-text-row-separator= : Spacing between rows (vertical)
+  - =vkbd-text-title-bar= : Entire title bar
+  - =vkbd-text-title-button= : Title bar buttons
+  - =vkbd-text-title-button-separator= : Spacing between buttons (horizontal)
+  - =vkbd-text-title-caption= : Title bar text
 
 Title bar:
-  - `vkbd-title-bar-format'
-  - `vkbd-title-button-close-caption'
-  - `vkbd-title-button-close-format'
-  - `vkbd-title-button-menu-caption'
-  - `vkbd-title-button-menu-format'
-  - `vkbd-title-button-extras'
+  - =vkbd-title-bar-format=
+  - =vkbd-title-button-close-caption=
+  - =vkbd-title-button-close-format=
+  - =vkbd-title-button-menu-caption=
+  - =vkbd-title-button-menu-format=
+  - =vkbd-title-button-extras=
 
 Key repeat:
-  - `vkbd-key-repeat-enabled'
-  - `vkbd-key-repeat-delay'
-  - `vkbd-key-repeat-interval'
+  - =vkbd-key-repeat-enabled=
+  - =vkbd-key-repeat-delay=
+  - =vkbd-key-repeat-interval=
 
 Frame settings:
-- `vkbd-keyboard-frame-parameters' : Frame parameters (note that changes may not be immediately reflected due to frame reuse)
-- `vkbd-recycle-frames' : Whether to pool and reuse frames (you can delete all pooled frames with M-x vkbd-delete-all-unused-frames)
-- `vkbd-keyboard-frame-keep-visible-margins' : Margins to keep visible when dragging the virtual keyboard frame
+- =vkbd-keyboard-frame-parameters= : Frame parameters (note that changes may not be immediately reflected due to frame reuse)
+- =vkbd-recycle-frames= : Whether to pool and reuse frames (you can delete all pooled frames with M-x vkbd-delete-all-unused-frames)
+- =vkbd-keyboard-frame-keep-visible-margins= : Margins to keep visible when dragging the virtual keyboard frame
 
 Buffer settings:
-- `vkbd-keyboard-buffer-local-variables' : Buffer local constant variables
+- =vkbd-keyboard-buffer-local-variables= : Buffer local constant variables
 
 Style settings:
-- `vkbd-default-keyboard-style' (currently only text01 style is available)
+- =vkbd-default-keyboard-style= (currently only text01 style is available)
 
 Input mechanisms:
-  - `vkbd-replace-read-functions'
+  - =vkbd-replace-read-functions=
 
 ** How to Adjust Size
 
 The easiest way to adjust the overall keyboard height is to change the
-:height of the `vkbd-text-keyboard' face.You can also change the font
-parameter in `vkbd-keyboard-frame-parameters'.
+:height of the =vkbd-text-keyboard= face.You can also change the font
+parameter in =vkbd-keyboard-frame-parameters=.
 
 To change only the key height without changing the text size on the keys, adjust
-the :height of `vkbd-text-column-separator' or `vkbd-text-key-line-height' variable.
+the :height of =vkbd-text-column-separator= or =vkbd-text-key-line-height= variable.
 
 ** Change key text
 
@@ -199,9 +199,9 @@ Starting with Emacs 30, a mechanism to control on-screen keyboards has been adde
 
 vkbd.el allows you to either use vkbd alongside the native on-screen keyboard or use vkbd exclusively.
 
-The `vkbd-toggle-native-osk' command can be used to disable the native on-screen keyboard. When running on Android, this command is added as a button on vkbd's title bar.
+The =vkbd-toggle-native-osk= command can be used to disable the native on-screen keyboard. When running on Android, this command is added as a button on vkbd's title bar.
 
-If you want to replace the native on-screen keyboard with vkbd, you can use the global minor mode `vkbd-replace-osk-mode'. Emacs has a feature that automatically displays the on-screen keyboard when an editable area is touched, and with this mode enabled, `vkbd-open-global-keyboard' is executed instead of showing the native on-screen keyboard.
+If you want to replace the native on-screen keyboard with vkbd, you can use the global minor mode =vkbd-replace-osk-mode=. Emacs has a feature that automatically displays the on-screen keyboard when an editable area is touched, and with this mode enabled, =vkbd-open-global-keyboard= is executed instead of showing the native on-screen keyboard.
 
 * Using from Emacs Lisp
 
