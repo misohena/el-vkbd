@@ -6,7 +6,6 @@ This Emacs Lisp library displays a virtual keyboard (also known as an on-screen 
 
 The following image is a screenshot of Emacs for Android (Native App).
 
-#+ATTR_HTML: :width 400
 [[file:./screenshot/android-screen.png]]
 
 The keyboard displayed above is the virtual keyboard created by this library.
@@ -19,32 +18,26 @@ By the way, at the bottom is the flick input panel from ATOK, a Japanese IME app
 
 Display only special keys and use alongside the existing on-screen keyboard:
 
-#+ATTR_HTML: :width 300
 [[file:./screenshot/compact-layout.png]]
 
 Disable the native on-screen keyboard and use only vkbd:
 
-#+ATTR_HTML: :width 300
 [[file:./screenshot/vkbd-only.png]]
 
 Display in a child frame (not very user-friendly):
 
-#+ATTR_HTML: :width 300
 [[file:./screenshot/child-frame.png]]
 
 Keyboard menu:
 
-#+ATTR_HTML: :width 300
 [[file:./screenshot/keyboard-menu.png]]
 
 The buttons in the title bar are, from left to right: close, menu, switch to 10x7 layout, switch to special-keys-only layout, and toggle native on-screen keyboard disable (Android only). Of course, these are customizable:
 
-#+ATTR_HTML: :width 300
 [[file:./screenshot/title-bar.png]]
 
 Of course, it can also be used in desktop environments:
 
-#+ATTR_HTML: :width 400
 [[file:./screenshot/mswindows-screen.png]]
 
 * Requirements
